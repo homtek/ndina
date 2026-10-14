@@ -1,1 +1,1 @@
-{ "name": "ndina", "version": "1.0.0", "private": true, "scripts": { "test": "node --test tests/*.test.mjs", "serve": "cd app && python3 -m http.server 8080" } }
+{ "name": "ndina", "version": "1.0.0", "private": true, "type": "module", "scripts": { "test": "node --test tests/*.test.mjs", "serve": "cd app && python3 -m http.server 8080" } }

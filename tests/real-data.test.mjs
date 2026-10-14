@@ -64,12 +64,12 @@ test('member report round-trips through the parser', () => {
     { cn: '992041400177', amt: 101300, type: 'SL', status: 'PAID' },
     { cn: '992041400274', amt: 20000, type: 'SL', status: 'UNPAID' },
   ];
-  const t = memberReport({ name: 'AMOS KAPUNGU', date: '2026-10-13', entries, filter: { type: 'BL', amounts: [], target: 0 }, spareCount: 2 });
+  const t = memberReport({ name: 'AMOS KAPUNGU', date: '2026-10-13', entries, });
   const p = parseReport(t);
   assert.equal(p.date, '2026-10-13');
   assert.equal(p.name, 'AMOS KAPUNGU');
   assert.equal(p.entries.length, 3);
   assert.deepEqual(p.declared, { count: 3, bl: 80000, sl: 101300, total: 181300 });
-  assert.ok(p.filterNote.startsWith('Imechujwa'));
+  assert.ok(!/imechujwa|akiba/i.test(t));
   assert.equal(p.entries[2].status, 'UNPAID');
 });

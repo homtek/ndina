@@ -10,19 +10,8 @@ export const TEMPLATE = {
 const line = (e) => `${e.cn}-${fmtNum(e.amt)} ${e.type} ${e.status}`;
 const sumBy = (list, f) => Math.round(list.filter(f).reduce((a, e) => a + e.amt, 0) * 100) / 100;
 
-export function filterNoteText(filter, spareCount) {
-  const parts = [];
-  if (filter) {
-    if (filter.type && filter.type !== 'ALL') parts.push(`${filter.type} tu`);
-    if (filter.amounts?.length) parts.push(filter.amounts.map(fmtNum).join('/'));
-    if (filter.target > 0) parts.push(`lengo ${fmtNum(filter.target)}`);
-  }
-  if (spareCount > 0) parts.push(`akiba ${spareCount} haijajumuishwa`);
-  return parts.length ? `Imechujwa: ${parts.join(', ')}` : '';
-}
-
 // A member's own report. entries = entries in the "used" pool, in order.
-export function memberReport({ name, date, entries, filter, spareCount }) {
+export function memberReport({ name, date, entries }) {
   const paid = entries.filter((e) => e.status === 'PAID');
   const unpaid = entries.filter((e) => e.status === 'UNPAID');
   const out = [`${TEMPLATE.memberDate} ${isoToDmy(date)}`];
@@ -33,8 +22,6 @@ export function memberReport({ name, date, entries, filter, spareCount }) {
   out.push(`Total SL: ${fmtNum(sumBy(paid, (e) => e.type === 'SL'))}`);
   out.push(`Total Amount: ${fmtNum(sumBy(paid, () => true))}`);
   if (unpaid.length) out.push(`Total Unpaid: ${fmtNum(sumBy(unpaid, () => true))}`);
-  const note = filterNoteText(filter, spareCount);
-  if (note) out.push(note);
   return out.join('\n');
 }
 
@@ -64,7 +51,6 @@ export function compiledReport({ title, date, result }) {
       m.unpaid.forEach((e) => out.push(`${e.cn}-${fmtNum(e.amt)} ${e.type}`));
     } else out.push('_UNPAID:_ 0');
     out.push(memberTotalLine(m));
-    if (m.filterNote) out.push(`_(${m.filterNote})_`);
     out.push('');
   });
   const t = result.totals;
@@ -108,9 +94,11 @@ export function issueText(issue, nameOf, lang = 'sw') {
     }
     case 'within': return sw ? `${issue.cn} imeandikwa zaidi ya mara moja kwenye ripoti yako. Imehesabiwa mara moja.` : `${issue.cn} appears more than once in your report. Counted once.`;
     case 'cnformat': return sw ? `${issue.cn} si control number sahihi (tarakimu 12). Imeondolewa.` : `${issue.cn} is not a valid control number (12 digits). Left out.`;
+    case 'noamount': return sw ? `${issue.cn} haina kiasi. Imeondolewa.` : `${issue.cn} has no amount. Left out.`;
+    case 'inferred': return sw ? `Mistari ${d.n} haina aina. Imechukuliwa kuwa ${d.type} kutoka kwenye jumla. Andika ${d.type} kwenye kila mstari.` : `${d.n} lines had no type. Taken as ${d.type} from your totals. Write ${d.type} on each line.`;
     case 'type': return sw ? `${issue.cn} haina aina (BL au SL). Imeondolewa.` : `${issue.cn} has no type (BL or SL). Left out.`;
     case 'count': return sw ? `Umeandika Total C/N:${d.declared} lakini mistari ni ${d.actual}.` : `You wrote Total C/N:${d.declared} but there are ${d.actual} lines.`;
-    case 'sum': { const w = issue.what === 'TOTAL' ? (sw ? 'Amount' : 'Amount') : issue.what; return sw ? `Total ${w} uliyoandika ni ${fmtNum(d.declared)}, mistari inajumlisha ${fmtNum(d.actual)}.` : `Your Total ${w} says ${fmtNum(d.declared)} but the lines add up to ${fmtNum(d.actual)}.`; }
+    case 'sum': { const w = issue.what === 'TOTAL' ? 'Amount' : issue.what === 'PAID' ? 'Paid' : issue.what === 'UNPAID' ? 'Unpaid' : issue.what; return sw ? `Total ${w} uliyoandika ni ${fmtNum(d.declared)}, mistari inajumlisha ${fmtNum(d.actual)}.` : `Your Total ${w} says ${fmtNum(d.declared)} but the lines add up to ${fmtNum(d.actual)}.`; }
     case 'date': return sw ? `Ripoti ni ya tarehe ${isoToDmy(d.date)}, si ya siku hii.` : `Report is dated ${isoToDmy(d.date)}, not this day.`;
     case 'carry': return sw ? `Mistari ${d.n} za jana zimeondolewa (${d.cns.slice(0, 3).join(', ')}${d.n > 3 ? '…' : ''}).` : `${d.n} yesterday lines were left out (${d.cns.slice(0, 3).join(', ')}${d.n > 3 ? '…' : ''}).`;
     default: return issue.kind;

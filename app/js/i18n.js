@@ -1,6 +1,6 @@
 // Interface text. Swahili first, English second. Report wording for WhatsApp lives in core/format.js.
 const sw = {
-  navReport: 'Ripoti yangu', navLeader: 'Kiongozi', navMore: 'Zaidi', date: 'Tarehe',
+  totalToday: 'Jumla ya siku', navReport: 'Ripoti yangu', navLeader: 'Kiongozi', navMore: 'Zaidi', date: 'Tarehe',
   yourName: 'Jina lako', yourNameHint: 'Litaandikwa juu ya kila ripoti unayotuma.', save: 'Hifadhi',
   pickShots: 'Chagua screenshot', typeManually: 'Andika mwenyewe',
   reading: 'Inasoma {done} kati ya {total}…', waiting: 'Screenshot {n} zinasubiri kusomwa', pause: 'Simamisha', resume: 'Endelea',
@@ -16,7 +16,7 @@ const sw = {
   dateMismatchNote: 'Zilizo kwenye ripoti zenye tarehe tofauti: {n}.', storageFull: 'Hifadhi ya simu imejaa. Pakua nakala sasa (Zaidi).',
   filterTitle: 'Chuja au weka lengo', active: 'inatumika', fType: 'Aina', both: 'Zote',
   fAmounts: 'Viasi maalum (hiari)', fTarget: 'Jumla unayotaka (hiari)',
-  filterHint: 'Zinazotoshea zinabaki kwenye ripoti, nyingine zinahifadhiwa Akiba. Ripoti itaonyesha kuwa imechujwa.',
+  filterHint: 'Zinazotoshea zinabaki kwenye ripoti, nyingine zinahifadhiwa Akiba.',
   apply: 'Tumia', resetAll: 'Rudisha zote',
   filterResult: 'Kwenye ripoti: {used}. Akiba: {spare}.', targetResult: 'Lengo {target}. Karibu zaidi: {best} (tofauti {diff}).',
   poolUsed: 'Ripoti', poolSpare: 'Akiba', poolTrash: 'Tupio',
@@ -63,7 +63,7 @@ const sw = {
 };
 
 const en = {
-  navReport: 'My report', navLeader: 'Leader', navMore: 'More', date: 'Date',
+  totalToday: 'Total for the day', navReport: 'My report', navLeader: 'Leader', navMore: 'More', date: 'Date',
   yourName: 'Your name', yourNameHint: 'Printed at the top of every report you send.', save: 'Save',
   pickShots: 'Choose screenshots', typeManually: 'Type one in',
   reading: 'Reading {done} of {total}…', waiting: '{n} screenshots waiting to be read', pause: 'Pause', resume: 'Continue',
@@ -79,7 +79,7 @@ const en = {
   dateMismatchNote: 'Entries in the report with a different date: {n}.', storageFull: 'Phone storage is full. Download a backup now (More).',
   filterTitle: 'Filter or set a target', active: 'active', fType: 'Type', both: 'Both',
   fAmounts: 'Specific amounts (optional)', fTarget: 'Target total (optional)',
-  filterHint: 'Matching entries stay in the report, the rest go to Spare. The report will say it was filtered.',
+  filterHint: 'Matching entries stay in the report, the rest go to Spare.',
   apply: 'Apply', resetAll: 'Reset all',
   filterResult: 'In report: {used}. Spare: {spare}.', targetResult: 'Target {target}. Closest: {best} (difference {diff}).',
   poolUsed: 'Report', poolSpare: 'Spare', poolTrash: 'Trash',

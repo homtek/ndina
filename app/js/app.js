@@ -110,9 +110,21 @@ function header() {
   </header>`;
 }
 
+const ICON = {
+  report: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 16h5"/>',
+  leader: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
+  more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+};
 function nav() {
   const items = [['report', t('navReport')], ['leader', t('navLeader')], ['more', t('navMore')]];
-  return items.map(([k, label]) => `<button data-act="tab" data-v="${k}" class="${ui.tab === k ? 'on' : ''}">${label}</button>`).join('');
+  return items.map(([k, label]) => `<button data-act="tab" data-v="${k}" class="${ui.tab === k ? 'on' : ''}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg><span>${label}</span></button>`).join('');
+}
+
+function sumBlock(total, bl, sl, count, extra = '') {
+  return `<section class="sum"><div class="eyebrow">${t('totalToday')}</div>
+    <div class="figure"><small>TZS</small>${fmtNum(total)}</div>
+    <div class="figmeta">${t('cn', { n: count })}</div>
+    <div class="split"><div><span>BL</span><b>${fmtNum(bl)}</b></div><div><span>SL</span><b>${fmtNum(sl)}</b></div></div>${extra}</section>`;
 }
 
 const seg = (name, value, opts) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button type="button" data-act="${name}" data-v="${v}" class="${value === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
@@ -123,7 +135,7 @@ function viewReport() {
   const paid = paidSum(used), bl = paidSum(used, 'BL'), sl = paidSum(used, 'SL');
   const unpaid = used.filter((e) => e.status === 'UNPAID');
   const mism = used.filter(dateMismatch).length;
-  const text = used.length ? memberReport({ name: S.settings.name, date: reportDate(), entries: used, filter: S.filter, spareCount: spare.length }) : '';
+  const text = used.length ? memberReport({ name: S.settings.name, date: reportDate(), entries: used }) : '';
   const list = ui.pool === 'used' ? used : ui.pool === 'spare' ? spare : trash;
   const running = OCR.progress.running;
   const pending = ui.pending;
@@ -160,13 +172,9 @@ function viewReport() {
       ${review.map((e) => reviewCard(e)).join('')}</section>`;
   }
 
-  h += `<section class="sum">
-    <div class="figure">${fmtNum(paid)}</div>
-    <div class="figlabel">TZS &nbsp;·&nbsp; ${t('cn', { n: used.length })}</div>
-    <div class="split"><span>BL <b>${fmtNum(bl)}</b></span><span>SL <b>${fmtNum(sl)}</b></span>${unpaid.length ? `<span>${t('unpaid')} <b>${fmtNum(unpaid.reduce((a, e) => a + e.amt, 0))}</b></span>` : ''}</div>
+  h += sumBlock(paid, bl, sl, used.length, `${unpaid.length ? `<p class="note">${t('unpaid')}: <b>${fmtNum(unpaid.reduce((x, e) => x + e.amt, 0))}</b></p>` : ''}
     ${mism ? `<p class="note warnline">${t('dateMismatchNote', { n: mism })}</p>` : ''}
-    ${storageError ? `<p class="note warnline">${t('storageFull')}</p>` : ''}
-  </section>`;
+    ${storageError ? `<p class="note warnline">${t('storageFull')}</p>` : ''}`);
 
   h += `<details class="card filter" ${ui.filterOpen ? 'open' : ''}><summary data-act="toggleFilter">${t('filterTitle')}${S.filter ? ` <span class="tag on">${t('active')}</span>` : ''}</summary>
     <div class="stack">
@@ -274,7 +282,8 @@ function leaderReceive(res) {
     <button class="btn primary" data-act="readPaste">${t('readReports')}</button></section>`;
   if (res.unassigned.length) {
     h += `<section class="card"><h2>${t('whoseTitle')}</h2>${res.unassigned.map((r) => `<div class="unas">
-      <div class="small"><b>${esc(r.sender || t('noSender'))}</b> · ${t('cn', { n: r.parsed.entries.length })}</div>
+      <div class="small"><b>${esc(r.parsed.name || r.sender || t('noSender'))}</b> · ${t('cn', { n: r.parsed.entries.length })} · ${fmtNum(round2(r.parsed.entries.filter((e) => e.status !== 'UNPAID' && !Number.isNaN(e.amt)).reduce((a, e) => a + e.amt, 0)))}</div>
+      <div class="muted small mono">${esc(r.parsed.entries[0]?.cn || '')}…</div>
       <div class="chips">${S.leader.roster.map((m) => `<button class="chip" data-act="assign" data-r="${r.id}" data-m="${m.id}">${esc(m.name)}</button>`).join('')}
       <button class="chip danger" data-act="dropReport" data-r="${r.id}">${t('remove')}</button></div></div>`).join('')}</section>`;
   }
@@ -324,11 +333,9 @@ function leaderFinal(res) {
   }
   const tt = res.totals;
   const text = compiledReport({ title: lic.t, date: reportDate(), result: res });
-  h += `<section class="sum"><div class="figure">${fmtNum(tt.blPaid + tt.slPaid + tt.blUnpaid + tt.slUnpaid)}</div>
-    <div class="figlabel">TZS · ${t('cn', { n: res.totals.cn })}</div>
-    <div class="split"><span>BL <b>${fmtNum(tt.blPaid + tt.blUnpaid)}</b></span><span>SL <b>${fmtNum(tt.slPaid + tt.slUnpaid)}</b></span></div>
-    ${res.missing.length ? `<p class="note warnline">${t('missing')}: ${esc(res.missing.map((m) => m.name).join(', '))}</p>` : ''}
-    ${session().ack ? `<p class="note warnline">${t('ackOn')} <button class="link" data-act="unack">${t('undo')}</button></p>` : ''}</section>
+  h += sumBlock(tt.blPaid + tt.slPaid + tt.blUnpaid + tt.slUnpaid, tt.blPaid + tt.blUnpaid, tt.slPaid + tt.slUnpaid, res.totals.cn,
+    `${res.missing.length ? `<p class="note warnline">${t('missing')}: ${esc(res.missing.map((m) => m.name).join(', '))}</p>` : ''}
+    ${session().ack ? `<p class="note warnline">${t('ackOn')} <button class="link" data-act="unack">${t('undo')}</button></p>` : ''}`) + `
     <details class="preview" open><summary>${t('seeMessage')}</summary><pre>${esc(text)}</pre></details>
     <div class="actionbar"><button class="btn primary" data-act="shareFinal">${t('sendWa')}</button><button class="btn" data-act="copyFinal">${t('copy')}</button></div>`;
   return h;
@@ -399,7 +406,7 @@ function poolForDate(e) { return e.status === 'PAID' && e.pay && e.pay !== repor
 
 function mineText() {
   const used = poolOf('used');
-  return memberReport({ name: S.settings.name, date: reportDate(), entries: used, filter: S.filter, spareCount: poolOf('spare').length });
+  return memberReport({ name: S.settings.name, date: reportDate(), entries: used });
 }
 function fixText() {
   const res = compile({ roster: S.leader.roster, session: session(), date: reportDate(), prefix: prefix() });

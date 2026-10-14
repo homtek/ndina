@@ -50,7 +50,8 @@ export function compile({ roster, session, date, prefix = '99' }) {
     const seen = new Set();
     const live = p.entries.filter((e) => !e.carry);
     for (const e of live) {
-      if (!cnOk(e.cn, prefix) || Number.isNaN(e.amt)) {
+      if (Number.isNaN(e.amt)) { addIssue({ kind: 'noamount', memberId: m.id, severity: 'error', cn: e.cn }); continue; }
+      if (!cnOk(e.cn, prefix)) {
         addIssue({ kind: 'cnformat', memberId: m.id, severity: 'error', cn: e.cn, data: { amt: e.amt } });
         continue;
       }
@@ -76,6 +77,15 @@ export function compile({ roster, session, date, prefix = '99' }) {
     chk('BL', d.bl, (e) => e.type === 'BL');
     chk('SL', d.sl, (e) => e.type === 'SL');
     chk('TOTAL', d.total, () => true);
+    const sumKind = (what, declared, list) => {
+      if (declared == null) return;
+      const a = sum(list, () => true);
+      if (Math.abs(declared - a) > 0.5) addIssue({ kind: 'sum', memberId: m.id, what, data: { declared, actual: a } });
+    };
+    sumKind('PAID', d.paid, paid);
+    sumKind('UNPAID', d.unpaid, entries.filter((e) => e.status === 'UNPAID'));
+    const inferred = entries.filter((e) => e.inferred);
+    if (inferred.length) addIssue({ kind: 'inferred', memberId: m.id, data: { n: inferred.length, type: inferred[0].type } });
 
     perMember.set(m.id, { member: m, report: rep, entries, excluded });
     if (!excluded) entries.forEach((e) => {
