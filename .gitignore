@@ -1,0 +1,17 @@
+# SECRET: the key that signs leader codes. Never commit or upload it.
+owner/private-key.json
+*.jwk
+*private-key*
+
+# Dependencies and build leftovers
+node_modules/
+package-lock.json
+
+# Packaged copies
+*.zip
+
+# Editor / OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

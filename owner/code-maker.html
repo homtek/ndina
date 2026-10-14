@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ndina code maker (owner only)</title>
+<style>body{font:16px system-ui;max-width:520px;margin:24px auto;padding:0 14px}label{display:block;margin:12px 0 4px;color:#555;font-size:14px}
+input,textarea,button{font:inherit;width:100%;padding:10px;box-sizing:border-box}button{margin-top:14px;background:#0b6b57;color:#fff;border:0;border-radius:8px;min-height:44px}
+textarea{word-break:break-all}.warn{background:#fff3d9;padding:10px;border-radius:8px;font-size:14px}</style></head>
+<body>
+<h1>Ndina code maker</h1>
+<p class="warn">Owner only. Open this file from your computer or phone storage. Never upload it, or private-key.json, to the website.</p>
+<label>1. Your private-key.json</label><input type="file" id="key" accept=".json">
+<label>2. Group name</label><input id="g" placeholder="GEREZANI">
+<label>3. Report title</label><input id="t" placeholder="TAARIFA YA SIKU YA GEREZANI">
+<label>4. Valid until</label><input id="e" type="date">
+<button id="go">Make code</button>
+<label>Code (send this to the leader)</label><textarea id="out" rows="6" readonly></textarea>
+<script>
+const enc=new TextEncoder();
+const b64u=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+document.getElementById('go').onclick=async()=>{
+  try{
+    const f=document.getElementById('key').files[0]; if(!f) return alert('Choose private-key.json');
+    const g=document.getElementById('g').value.trim(), e=document.getElementById('e').value;
+    if(!g||!e) return alert('Group name and date are required');
+    const jwk=JSON.parse(await f.text());
+    const key=await crypto.subtle.importKey('jwk',jwk,{name:'ECDSA',namedCurve:'P-256'},false,['sign']);
+    const payload={r:'leader',g,t:document.getElementById('t').value.trim(),e,i:Date.now().toString(36)};
+    const body=b64u(enc.encode(JSON.stringify(payload)));
+    const sig=await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},key,enc.encode(body));
+    document.getElementById('out').value=`NDN1.${body}.${b64u(sig)}`;
+  }catch(err){alert('Failed: '+err.message)}
+};
+</script></body></html>
