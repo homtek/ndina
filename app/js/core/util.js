@@ -59,3 +59,11 @@ export const nameTokens = (s) =>
     .toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 
 export const cnOk = (cn, prefix = '99') => /^\d{12}$/.test(cn) && cn.startsWith(prefix);
+
+// Monday of the week that holds this date (Tanzania weeks run Monday to Sunday).
+export function weekStart(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dow = (new Date(y, m - 1, d).getDay() + 6) % 7;
+  return addDays(iso, -dow);
+}
+export const dowIndex = (iso) => { const [y, m, d] = iso.split('-').map(Number); return (new Date(y, m - 1, d).getDay() + 6) % 7; };

@@ -69,7 +69,7 @@ test('member report round-trips through the parser', () => {
   assert.equal(p.date, '2026-10-13');
   assert.equal(p.name, 'AMOS KAPUNGU');
   assert.equal(p.entries.length, 3);
-  assert.deepEqual(p.declared, { count: 3, bl: 80000, sl: 101300, total: 181300 });
+  assert.deepEqual(p.declared, { count: 3, bl: 80000, sl: 121300, total: 201300 }); // BL + SL, paid and unpaid
   assert.ok(!/imechujwa|akiba/i.test(t));
   assert.equal(p.entries[2].status, 'UNPAID');
 });

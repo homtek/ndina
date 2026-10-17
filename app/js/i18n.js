@@ -1,6 +1,14 @@
 // Interface text. Swahili first, English second. Report wording for WhatsApp lives in core/format.js.
 const sw = {
-  totalToday: 'Jumla ya siku', navReport: 'Ripoti yangu', navLeader: 'Kiongozi', navMore: 'Zaidi', date: 'Tarehe',
+  totalToday: 'Jumla ya siku', navWeek: 'Wiki', totalWeek: 'Jumla ya wiki', prevWeek: 'Wiki iliyopita', nextWeek: 'Wiki ijayo', daysTitle: 'Siku',
+  day0: 'Jumatatu', day1: 'Jumanne', day2: 'Jumatano', day3: 'Alhamisi', day4: 'Ijumaa', day5: 'Jumamosi', day6: 'Jumapili',
+  noData: 'Hakuna data', toCheck: 'hakiki {n}', useDay: 'Tumia', skipDay: 'Ruka', addDay: 'Ongeza',
+  weekFormat: 'Muundo wa ripoti ya wiki', modeSum: 'Muhtasari', modeFull: 'Kamili',
+  pasteDaily: 'Bandika ripoti za kila siku', pasteDailyHint: 'Kwa siku ambazo hazipo kwenye Ndina. Bandika ripoti za kawaida (zile za Ona ujumbe), moja au nyingi. Kila moja huenda kwenye tarehe yake.',
+  addDaily: 'Ongeza kwenye wiki', dailyAdded: 'C/N {n} zimeongezwa kwa siku {days}.', dailyDup: 'Zilizokuwepo: {n}.', dailyChanged: 'Za kuhakiki (kiasi tofauti): {n}.',
+  dailyBad: 'Zisizofaa zimerukwa: {n}.', dailyNoDate: 'Ripoti {n} hazina tarehe (andika Tar dd.mm.yyyy).',
+  payerName: 'Jina la mlipaji (hiari)', toPayDay: 'Hamishia {d}', movedTo: 'Imehamishiwa {d}',
+  navReport: 'Ripoti yangu', navLeader: 'Kiongozi', navMore: 'Zaidi', date: 'Tarehe',
   yourName: 'Jina lako', yourNameHint: 'Litaandikwa juu ya kila ripoti unayotuma.', save: 'Hifadhi',
   pickShots: 'Chagua screenshot', typeManually: 'Andika mwenyewe',
   reading: 'Inasoma {done} kati ya {total}…', waiting: 'Screenshot {n} zinasubiri kusomwa', pause: 'Simamisha', resume: 'Endelea',
@@ -57,13 +65,21 @@ const sw = {
   help3: 'Hakiki kiasi na aina, tumia Chuja kama unataka sehemu tu, kisha bonyeza Tuma WhatsApp.',
   help4: 'Chagua kundi kwenye WhatsApp na ubonyeze tuma.',
   help5: 'Kiongozi hubandika ripoti za kundi kwenye sehemu ya Kiongozi, anatazama makosa na anatuma ripoti kuu.',
-  about: 'Kuhusu', aboutText: 'Haitumii seva. Picha za screenshot hufutwa baada ya kusomwa na majina ya wateja hayahifadhiwi.',
+  about: 'Kuhusu', aboutText: 'Haitumii seva. Screenshot hufutwa baada ya kusomwa. Majina ya walipaji hubaki kwenye simu hii tu na hayaingii kwenye ripoti.',
   lockLeader: 'Funga sehemu ya kiongozi', confirmLock: 'Funga sehemu ya kiongozi kwenye simu hii?',
   wipe: 'Futa data yote kwenye simu hii', confirmWipe: 'Hii inafuta ripoti, wanachama na mipangilio yote kwenye simu hii. Una nakala? Endelea?', wiped: 'Data imefutwa',
 };
 
 const en = {
-  totalToday: 'Total for the day', navReport: 'My report', navLeader: 'Leader', navMore: 'More', date: 'Date',
+  totalToday: 'Total for the day', navWeek: 'Week', totalWeek: 'Total for the week', prevWeek: 'Previous week', nextWeek: 'Next week', daysTitle: 'Days',
+  day0: 'Monday', day1: 'Tuesday', day2: 'Wednesday', day3: 'Thursday', day4: 'Friday', day5: 'Saturday', day6: 'Sunday',
+  noData: 'No data', toCheck: '{n} to check', useDay: 'Use', skipDay: 'Skip', addDay: 'Add',
+  weekFormat: 'Weekly report format', modeSum: 'Summary', modeFull: 'Full',
+  pasteDaily: 'Paste daily reports', pasteDailyHint: 'For days that are not in Ndina. Paste normal reports (the ones from See message), one or many. Each goes to its own date.',
+  addDaily: 'Add to the week', dailyAdded: '{n} C/N added across {days} days.', dailyDup: 'Already had: {n}.', dailyChanged: 'To check (different amount): {n}.',
+  dailyBad: 'Invalid lines skipped: {n}.', dailyNoDate: '{n} reports have no date (write Tar dd.mm.yyyy).',
+  payerName: 'Payer name (optional)', toPayDay: 'Move to {d}', movedTo: 'Moved to {d}',
+  navReport: 'My report', navLeader: 'Leader', navMore: 'More', date: 'Date',
   yourName: 'Your name', yourNameHint: 'Printed at the top of every report you send.', save: 'Save',
   pickShots: 'Choose screenshots', typeManually: 'Type one in',
   reading: 'Reading {done} of {total}…', waiting: '{n} screenshots waiting to be read', pause: 'Pause', resume: 'Continue',
@@ -118,7 +134,7 @@ const en = {
   help3: 'Check amounts and types, use Filter if you only want part of them, then tap Send to WhatsApp.',
   help4: 'Pick the group in WhatsApp and send.',
   help5: 'The leader pastes the group reports in the Leader area, reviews the issues and sends the final report.',
-  about: 'About', aboutText: 'No server. Screenshots are deleted after reading and payer names are never stored.',
+  about: 'About', aboutText: 'No server. Screenshots are deleted after reading. Payer names stay on this phone only and are never put in reports.',
   lockLeader: 'Lock the leader area', confirmLock: 'Lock the leader area on this phone?',
   wipe: 'Delete all data on this phone', confirmWipe: 'This deletes all reports, members and settings on this phone. Do you have a backup? Continue?', wiped: 'Data deleted',
 };

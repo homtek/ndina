@@ -1,5 +1,5 @@
 // Text that goes into WhatsApp. Wording lives here so a group could swap it.
-import { fmtNum, isoToDmy } from './util.js';
+import { fmtNum, isoToDmy, dowIndex } from './util.js';
 
 export const TEMPLATE = {
   memberDate: 'Tar',
@@ -10,18 +10,44 @@ export const TEMPLATE = {
 const line = (e) => `${e.cn}-${fmtNum(e.amt)} ${e.type} ${e.status}`;
 const sumBy = (list, f) => Math.round(list.filter(f).reduce((a, e) => a + e.amt, 0) * 100) / 100;
 
-// A member's own report. entries = entries in the "used" pool, in order.
+// A member's own report. Totals count every line in it (BL + SL, paid and unpaid).
 export function memberReport({ name, date, entries }) {
-  const paid = entries.filter((e) => e.status === 'PAID');
-  const unpaid = entries.filter((e) => e.status === 'UNPAID');
   const out = [`${TEMPLATE.memberDate} ${isoToDmy(date)}`];
   if (name) out.push(`${TEMPLATE.nameLabel}: ${name}`);
   entries.forEach((e) => out.push(line(e)));
   out.push(`Total C/N:${entries.length}`);
-  out.push(`Total BL: ${fmtNum(sumBy(paid, (e) => e.type === 'BL'))}`);
-  out.push(`Total SL: ${fmtNum(sumBy(paid, (e) => e.type === 'SL'))}`);
-  out.push(`Total Amount: ${fmtNum(sumBy(paid, () => true))}`);
-  if (unpaid.length) out.push(`Total Unpaid: ${fmtNum(sumBy(unpaid, () => true))}`);
+  out.push(`Total BL: ${fmtNum(sumBy(entries, (e) => e.type === 'BL'))}`);
+  out.push(`Total SL: ${fmtNum(sumBy(entries, (e) => e.type === 'SL'))}`);
+  out.push(`Total Amount: ${fmtNum(sumBy(entries, () => true))}`);
+  return out.join('\n');
+}
+
+export const DAYS_SW = ['Jumatatu', 'Jumanne', 'Jumatano', 'Alhamisi', 'Ijumaa', 'Jumamosi', 'Jumapili'];
+
+// Weekly report. days: [{date, entries}] (only days that are used), mode: 'sum' | 'full'
+export function weeklyReport({ name, from, to, days, emptyDates = [], mode = 'sum' }) {
+  const tot = (list, type) => sumBy(list, (e) => !type || e.type === type);
+  const label = (d) => `${DAYS_SW[dowIndex(d)]} ${isoToDmy(d)}`;
+  const out = ['TAARIFA YA WIKI', `Wiki: ${isoToDmy(from)} - ${isoToDmy(to)}`];
+  if (name) out.push(`${TEMPLATE.nameLabel}: ${name}`);
+  out.push('');
+  const all = [];
+  days.forEach(({ date, entries }) => {
+    all.push(...entries);
+    if (mode === 'full') {
+      out.push(label(date));
+      entries.forEach((e) => out.push(line(e)));
+      out.push(`Jumla ya siku: ${fmtNum(tot(entries))} (${entries.length} C/N)`, '');
+    } else {
+      out.push(`${label(date)}: C/N ${entries.length} | BL ${fmtNum(tot(entries, 'BL'))} | SL ${fmtNum(tot(entries, 'SL'))} | Jumla ${fmtNum(tot(entries))}`);
+    }
+  });
+  if (mode !== 'full') out.push('');
+  if (emptyDates.length) out.push(`Hakuna ripoti: ${emptyDates.map((d) => DAYS_SW[dowIndex(d)]).join(', ')}`, '');
+  out.push(`Total C/N:${all.length}`);
+  out.push(`Total BL: ${fmtNum(tot(all, 'BL'))}`);
+  out.push(`Total SL: ${fmtNum(tot(all, 'SL'))}`);
+  out.push(`Total Amount: ${fmtNum(tot(all))}`);
   return out.join('\n');
 }
 

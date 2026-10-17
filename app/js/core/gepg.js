@@ -110,5 +110,18 @@ export function parseGepgText(text, { prefix = '99204' } = {}) {
 
   if (!cn.startsWith(prefix)) flags.push('cn-prefix');
 
-  return { ok: true, cn, amount, type, pay, recv, words, flags };
+  // Payer name (long names wrap onto the next line). Kept on the phone only, never put in reports.
+  let name = null;
+  const pi = lines.findIndex((l) => /payer\s*name/i.test(l));
+  if (pi >= 0) {
+    let n = lines[pi].replace(/.*payer\s*name/i, '').trim();
+    for (let k = 1; k <= 2 && pi + k < lines.length; k++) {
+      const nx = lines[pi + k];
+      if (/^[A-Za-z][A-Za-z'.\- ]*$/.test(nx) && !/^(paid|in respect|payment|bank|gepg|control|amount|institution|preview)/i.test(nx)) n += ' ' + nx;
+      else break;
+    }
+    name = n.replace(/[^A-Za-z'.\- ]/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 60) || null;
+  }
+
+  return { ok: true, cn, amount, type, pay, recv, words, name, flags };
 }

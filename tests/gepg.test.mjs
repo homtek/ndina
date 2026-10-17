@@ -49,3 +49,9 @@ test('mismatch between digits and words is flagged', () => {
 test('not a payment screen', () => {
   assert.equal(parseGepgText('Control number not found').ok, false);
 });
+
+test('payer name is read, including a name that wraps to a second line', () => {
+  assert.equal(parseGepgText(A).name, 'RAJABU ALLY ISSA');
+  const wrapped = A.replace('Payer Name RAJABU ALLY ISSA', 'Payer Name JACQUILINE JUDICA\nMSAMI');
+  assert.equal(parseGepgText(wrapped).name, 'JACQUILINE JUDICA MSAMI');
+});

@@ -1,9 +1,9 @@
 import { S, save, saveNow, replaceState, resetAll, reportDate, storageError, qClear } from './store.js';
 import { CONFIG } from './config.js';
 import { t, setLang, lang } from './i18n.js';
-import { esc, fmtNum, isoToDmy, parseAmount, uid, cnOk, round2, todayIso } from './core/util.js';
+import { esc, fmtNum, isoToDmy, parseAmount, uid, cnOk, round2, todayIso, addDays, weekStart, dowIndex } from './core/util.js';
 import { applyFilter } from './core/pools.js';
-import { memberReport, compiledReport, correctionsMessage, issueText } from './core/format.js';
+import { memberReport, weeklyReport, compiledReport, correctionsMessage, issueText } from './core/format.js';
 import { parseReport, splitMessages, extractNames, matchMember } from './core/reportparse.js';
 import { compile } from './core/compile.js';
 import { verifyCode } from './core/license.js';
@@ -16,7 +16,7 @@ const ui = {
   failed: [], dupCount: 0, pending: 0,
   fType: 'ALL', fAmounts: '', fTarget: '', fResult: null,
   lTab: 'receive', paste: '', rosterPaste: '', code: '', codeErr: '', unlockedUntil: null,
-  preview: false, showHelp: false, toastMsg: '', license: null, rosterImport: null, newName: '',
+  preview: false, showHelp: false, open: {}, weekStart: null, wkPaste: '', toastMsg: '', license: null, rosterImport: null, newName: '',
 };
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -30,9 +30,11 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
 }
 const sorted = (list) => [...list].sort((a, b) => a.added - b.added);
-const poolOf = (p) => sorted(S.entries.filter((e) => e.pool === p));
-const paidSum = (list, type) => round2(list.filter((e) => e.status === 'PAID' && (!type || e.type === type)).reduce((a, e) => a + e.amt, 0));
-const dateMismatch = (e) => e.status === 'PAID' && e.pay && e.pay !== reportDate();
+const poolOf = (p) => sorted(S.entries.filter((e) => e.pool === p && e.day === reportDate()));
+const sumOf = (list, type) => round2(list.filter((e) => !type || e.type === type).reduce((a, e) => a + e.amt, 0));
+const dateMismatch = (e) => e.status === 'PAID' && e.pay && e.pay !== e.day;
+const curFilter = () => S.filters[reportDate()] || null;
+const setFilter = (f) => { if (f) S.filters[reportDate()] = f; else delete S.filters[reportDate()]; };
 
 function session() {
   const d = reportDate();
@@ -45,13 +47,8 @@ function session() {
   return L.sessions[d];
 }
 
-function reclass() {
-  const d = reportDate();
-  S.entries.forEach((e) => {
-    if (e.auto === 'date' && e.pay === d && e.pool === 'spare') { e.pool = 'used'; e.auto = null; }
-    else if (!e.manual && e.pool === 'used' && dateMismatch(e)) { e.pool = 'spare'; e.auto = 'date'; }
-  });
-}
+// Older saved entries had no day: file them under their payment date.
+function migrate() { S.entries.forEach((e) => { if (!e.day) e.day = e.pay || reportDate(); }); }
 
 // ---------- OCR results -> entries ----------
 function ingest(res, name) {
@@ -62,7 +59,7 @@ function ingest(res, name) {
   const flags = res.flags.filter((f) => f !== 'no-words');
   if (existing) flags.push('exists');
   const e = {
-    id: uid(), cn: res.cn, amt: res.amount, type: res.type || '?', status: 'PAID', pay: res.pay, recv: res.recv,
+    id: uid(), cn: res.cn, amt: res.amount, type: res.type || '?', status: 'PAID', pay: res.pay, recv: res.recv, day: date, name: res.name || null,
     words: res.words ?? null, pool: 'used', flags, auto: null, manual: false, src: 'ocr', added: Date.now() + S.entries.length,
   };
   if (flags.length) e.pool = 'review';
@@ -113,15 +110,16 @@ function header() {
 const ICON = {
   report: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 16h5"/>',
   leader: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
+  week: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
   more: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
 };
 function nav() {
-  const items = [['report', t('navReport')], ['leader', t('navLeader')], ['more', t('navMore')]];
+  const items = [['report', t('navReport')], ['week', t('navWeek')], ['leader', t('navLeader')], ['more', t('navMore')]];
   return items.map(([k, label]) => `<button data-act="tab" data-v="${k}" class="${ui.tab === k ? 'on' : ''}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg><span>${label}</span></button>`).join('');
 }
 
-function sumBlock(total, bl, sl, count, extra = '') {
-  return `<section class="sum"><div class="eyebrow">${t('totalToday')}</div>
+function sumBlock(total, bl, sl, count, extra = '', label = t('totalToday')) {
+  return `<section class="sum"><div class="eyebrow">${label}</div>
     <div class="figure"><small>TZS</small>${fmtNum(total)}</div>
     <div class="figmeta">${t('cn', { n: count })}</div>
     <div class="split"><div><span>BL</span><b>${fmtNum(bl)}</b></div><div><span>SL</span><b>${fmtNum(sl)}</b></div></div>${extra}</section>`;
@@ -132,8 +130,7 @@ const seg = (name, value, opts) => `<div class="seg" role="group">${opts.map(([v
 // ----- member report -----
 function viewReport() {
   const used = poolOf('used'), spare = poolOf('spare'), trash = poolOf('trash'), review = poolOf('review');
-  const paid = paidSum(used), bl = paidSum(used, 'BL'), sl = paidSum(used, 'SL');
-  const unpaid = used.filter((e) => e.status === 'UNPAID');
+  const total = sumOf(used), bl = sumOf(used, 'BL'), sl = sumOf(used, 'SL');
   const mism = used.filter(dateMismatch).length;
   const text = used.length ? memberReport({ name: S.settings.name, date: reportDate(), entries: used }) : '';
   const list = ui.pool === 'used' ? used : ui.pool === 'spare' ? spare : trash;
@@ -172,11 +169,10 @@ function viewReport() {
       ${review.map((e) => reviewCard(e)).join('')}</section>`;
   }
 
-  h += sumBlock(paid, bl, sl, used.length, `${unpaid.length ? `<p class="note">${t('unpaid')}: <b>${fmtNum(unpaid.reduce((x, e) => x + e.amt, 0))}</b></p>` : ''}
-    ${mism ? `<p class="note warnline">${t('dateMismatchNote', { n: mism })}</p>` : ''}
+  h += sumBlock(total, bl, sl, used.length, `${mism ? `<p class="note warnline">${t('dateMismatchNote', { n: mism })}</p>` : ''}
     ${storageError ? `<p class="note warnline">${t('storageFull')}</p>` : ''}`);
 
-  h += `<details class="card filter" ${ui.filterOpen ? 'open' : ''}><summary data-act="toggleFilter">${t('filterTitle')}${S.filter ? ` <span class="tag on">${t('active')}</span>` : ''}</summary>
+  h += `<details class="card filter" ${ui.open.filter ? 'open' : ''}><summary data-act="toggle" data-k="filter">${t('filterTitle')}${curFilter() ? ` <span class="tag on">${t('active')}</span>` : ''}</summary>
     <div class="stack">
       <div><span class="lbl">${t('fType')}</span>${seg('fType', ui.fType, [['ALL', t('both')], ['BL', 'BL'], ['SL', 'SL']])}</div>
       <label class="field"><span class="lbl">${t('fAmounts')}</span><input id="fAmounts" inputmode="numeric" placeholder="100000, 80000" value="${esc(ui.fAmounts)}"></label>
@@ -193,7 +189,7 @@ function viewReport() {
   h += list.length ? `<ul class="entries">${list.map((e) => entryRow(e)).join('')}</ul>` : `<p class="empty">${t('empty.' + ui.pool)}</p>`;
 
   if (used.length) {
-    h += `<details class="preview"><summary>${t('seeMessage')}</summary><pre>${esc(text)}</pre></details>`;
+    h += `<details class="preview" ${ui.open.prev ? 'open' : ''}><summary data-act="toggle" data-k="prev">${t('seeMessage')}</summary><pre>${esc(text)}</pre></details>`;
   }
   h += `<div class="actionbar"><button class="btn primary" data-act="shareMine" ${used.length ? '' : 'disabled'}>${t('sendWa')}</button><button class="btn" data-act="copyMine" ${used.length ? '' : 'disabled'}>${t('copy')}</button></div>`;
   return h;
@@ -203,6 +199,7 @@ function manualForm() {
   return `<section class="card"><h2>${t('manualTitle')}</h2><div class="stack">
     <label class="field"><span class="lbl">${t('control')}</span><input id="mCn" inputmode="numeric" maxlength="12" placeholder="992041400527"></label>
     <label class="field"><span class="lbl">${t('amount')}</span><input id="mAmt" inputmode="decimal" placeholder="80000"></label>
+    <label class="field"><span class="lbl">${t('payerName')}</span><input id="mName" autocomplete="off"></label>
     <div><span class="lbl">${t('type')}</span><select id="mType"><option>BL</option><option>SL</option></select></div>
     <div><span class="lbl">${t('status')}</span><select id="mStatus"><option value="PAID">PAID</option><option value="UNPAID">UNPAID</option></select></div>
     <div class="row"><button class="btn primary" data-act="addManual">${t('add')}</button><button class="btn" data-act="manual">${t('cancel')}</button></div></div></section>`;
@@ -212,6 +209,7 @@ function entryForm(e, accept) {
   return `<div class="stack edit" data-id="${e.id}">
     <label class="field"><span class="lbl">${t('control')}</span><input data-f="cn" inputmode="numeric" maxlength="12" value="${esc(e.cn)}"></label>
     <label class="field"><span class="lbl">${t('amount')}</span><input data-f="amt" inputmode="decimal" value="${e.amt}"></label>
+    <label class="field"><span class="lbl">${t('payerName')}</span><input data-f="name" autocomplete="off" value="${esc(e.name || '')}"></label>
     <div class="row"><select data-f="type"><option ${e.type === 'BL' ? 'selected' : ''}>BL</option><option ${e.type === 'SL' ? 'selected' : ''}>SL</option><option value="?" ${e.type === '?' ? 'selected' : ''}>?</option></select>
     <select data-f="status"><option ${e.status === 'PAID' ? 'selected' : ''}>PAID</option><option ${e.status === 'UNPAID' ? 'selected' : ''}>UNPAID</option></select></div>
     <div class="row"><button class="btn primary" data-act="${accept ? 'accept' : 'saveEdit'}" data-id="${e.id}">${accept ? t('accept') : t('save')}</button>
@@ -231,6 +229,7 @@ function reviewCard(e) {
 function entryRow(e) {
   const open = ui.openId === e.id;
   const sub = [];
+  if (e.name) sub.push(`<span class="nm">${esc(e.name)}</span>`);
   if (e.pay) sub.push(isoToDmy(e.pay));
   if (dateMismatch(e)) sub.push(`<b class="bad">${t('otherDate')}</b>`);
   if (e.status === 'UNPAID') sub.push(`<b class="bad">UNPAID</b>`);
@@ -242,11 +241,83 @@ function entryRow(e) {
       <button class="btn sm" data-act="edit" data-id="${e.id}">${t('edit')}</button>
       ${e.pool !== 'used' ? `<button class="btn sm" data-act="toUsed" data-id="${e.id}">${t('toReport')}</button>` : ''}
       ${e.pool === 'used' ? `<button class="btn sm" data-act="toSpare" data-id="${e.id}">${t('toSpare')}</button>` : ''}
+      ${dateMismatch(e) ? `<button class="btn sm" data-act="toPayDay" data-id="${e.id}">${t('toPayDay', { d: isoToDmy(e.pay) })}</button>` : ''}
       ${e.pool !== 'trash' ? `<button class="btn sm" data-act="toTrash" data-id="${e.id}">${t('discard')}</button>` : ''}</div>`;
   }
   return `<li class="entry ${open ? 'open' : ''}"><button class="entryhead" data-act="open" data-id="${e.id}">
     <span class="cn">${esc(e.cn)}<small>${sub.join(' · ')}</small></span>
     <span class="amt">${fmtNum(e.amt)}<small class="tag ${e.type}">${e.type}</small></span></button>${acts}</li>`;
+}
+
+// ----- weekly -----
+function weekData() {
+  const start = ui.weekStart || weekStart(reportDate());
+  const dates = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(start, i));
+  const rows = dates.map((d, i) => ({
+    d, i,
+    used: sorted(S.entries.filter((e) => e.day === d && e.pool === 'used')),
+    review: S.entries.filter((e) => e.day === d && e.pool === 'review').length,
+  }));
+  const inc = rows.filter((r) => r.used.length && !S.weekly.skip[r.d]);
+  const all = inc.flatMap((r) => r.used);
+  const text = inc.length ? weeklyReport({
+    name: S.settings.name, from: dates[0], to: dates[6], mode: S.weekly.mode,
+    days: inc.map((r) => ({ date: r.d, entries: r.used })), emptyDates: rows.filter((r) => !inc.includes(r)).map((r) => r.d),
+  }) : '';
+  return { start, dates, rows, inc, all, text };
+}
+
+function viewWeek() {
+  const w = weekData();
+  const short = (d) => isoToDmy(d).slice(0, 5);
+  let h = `<div class="weeknav"><button class="iconbtn" data-act="wkPrev" aria-label="${t('prevWeek')}">‹</button>
+    <button class="weeklabel" data-act="wkThis">${short(w.dates[0])} – ${isoToDmy(w.dates[6])}</button>
+    <button class="iconbtn" data-act="wkNext" aria-label="${t('nextWeek')}">›</button></div>`;
+  h += sumBlock(sumOf(w.all), sumOf(w.all, 'BL'), sumOf(w.all, 'SL'), w.all.length, '', t('totalWeek'));
+  h += `<section class="card"><h2>${t('daysTitle')}</h2><ul class="days">${w.rows.map((r) => {
+    const has = r.used.length > 0, on = has && !S.weekly.skip[r.d];
+    return `<li class="day ${r.d === reportDate() ? 'today' : ''}"><div class="dayinfo"><b>${t('day' + r.i)}</b> <span class="muted">${short(r.d)}</span>
+      <small class="${has ? '' : 'faint'}">${has ? `${t('cn', { n: r.used.length })} · ${fmtNum(sumOf(r.used))}` : t('noData')}${r.review ? ` · <b class="warnline">${t('toCheck', { n: r.review })}</b>` : ''}</small></div>
+      <div class="row">${has ? `<button class="chip ${on ? 'on' : ''}" data-act="wkToggle" data-d="${r.d}">${on ? t('useDay') : t('skipDay')}</button>` : ''}
+      <button class="btn sm" data-act="openDay" data-d="${r.d}">${has ? t('edit') : t('addDay')}</button></div></li>`;
+  }).join('')}</ul></section>`;
+  h += `<div><span class="lbl">${t('weekFormat')}</span>${seg('wkMode', S.weekly.mode, [['sum', t('modeSum')], ['full', t('modeFull')]])}</div>`;
+  h += `<details class="card" ${ui.open.wk ? 'open' : ''}><summary data-act="toggle" data-k="wk">${t('pasteDaily')}</summary>
+    <p class="muted small">${t('pasteDailyHint')}</p>
+    <textarea id="wkPaste" rows="6" placeholder="Tar ${isoToDmy(reportDate())}\n992041400527-80,000 BL PAID…">${esc(ui.wkPaste)}</textarea>
+    <button class="btn primary" data-act="wkRead">${t('addDaily')}</button></details>`;
+  if (w.text) h += `<details class="preview" ${ui.open.prev ? 'open' : ''}><summary data-act="toggle" data-k="prev">${t('seeMessage')}</summary><pre>${esc(w.text)}</pre></details>`;
+  h += `<div class="actionbar"><button class="btn primary" data-act="wkShare" ${w.text ? '' : 'disabled'}>${t('sendWa')}</button><button class="btn" data-act="wkCopy" ${w.text ? '' : 'disabled'}>${t('copy')}</button></div>`;
+  return h;
+}
+
+// Entries from pasted daily reports go into the day written in each report.
+function addDailyPasted() {
+  const added = {}; let dup = 0, bad = 0, noDate = 0, changed = 0;
+  splitMessages(ui.wkPaste).forEach((m) => {
+    const p = parseReport(m.text);
+    if (!p.entries.length) return;
+    if (!p.date) { noDate++; return; }
+    p.entries.filter((e) => !e.carry).forEach((e) => {
+      if (!cnOk(e.cn, '99') || Number.isNaN(e.amt) || e.amt <= 0 || (e.type !== 'BL' && e.type !== 'SL')) { bad++; return; }
+      const ex = S.entries.find((x) => x.cn === e.cn && x.pool !== 'trash');
+      if (ex && ex.amt === e.amt) { dup++; return; }
+      const row = { id: uid(), cn: e.cn, amt: e.amt, type: e.type, status: e.status, pay: e.status === 'PAID' ? p.date : null, recv: null, day: p.date,
+        name: null, pool: ex ? 'review' : 'used', flags: ex ? ['exists'] : [], auto: null, manual: true, src: 'paste', added: Date.now() + S.entries.length };
+      if (ex) changed++;
+      S.entries.push(row); added[p.date] = (added[p.date] || 0) + 1;
+    });
+  });
+  const days = Object.keys(added).sort();
+  if (days.length) { ui.wkPaste = ''; ui.weekStart = weekStart(days[0]); }
+  save();
+  const parts = [];
+  if (days.length) parts.push(t('dailyAdded', { n: days.reduce((a, d) => a + added[d], 0), days: days.length }));
+  if (dup) parts.push(t('dailyDup', { n: dup }));
+  if (changed) parts.push(t('dailyChanged', { n: changed }));
+  if (bad) parts.push(t('dailyBad', { n: bad }));
+  if (noDate) parts.push(t('dailyNoDate', { n: noDate }));
+  toast(parts.join(' ') || t('pasteNone'));
 }
 
 // ----- leader -----
@@ -383,7 +454,7 @@ function render() {
   document.documentElement.lang = lang();
   $('#top').innerHTML = header();
   $('#nav').innerHTML = nav();
-  main().innerHTML = ui.tab === 'report' ? viewReport() : ui.tab === 'leader' ? viewLeader() : viewMore();
+  main().innerHTML = ui.tab === 'report' ? viewReport() : ui.tab === 'week' ? viewWeek() : ui.tab === 'leader' ? viewLeader() : viewMore();
 }
 
 // ---------- actions ----------
@@ -392,7 +463,7 @@ const mById = (id) => S.leader.roster.find((m) => m.id === id);
 
 function readForm(box) {
   const g = (f) => box.querySelector(`[data-f="${f}"]`).value.trim();
-  return { cn: g('cn').replace(/\D/g, ''), amt: parseAmount(g('amt')), type: g('type'), status: g('status') };
+  return { cn: g('cn').replace(/\D/g, ''), amt: parseAmount(g('amt')), type: g('type'), status: g('status'), name: g('name').toUpperCase() || null };
 }
 function validEntry(v, selfId) {
   if (!cnOk(v.cn, '99')) { toast(t('badCn')); return false; }
@@ -402,7 +473,7 @@ function validEntry(v, selfId) {
   if (other && other.amt === v.amt) { toast(t('alreadyHave')); return false; }
   return true;
 }
-function poolForDate(e) { return e.status === 'PAID' && e.pay && e.pay !== reportDate() ? 'spare' : 'used'; }
+function poolForDate(e) { return dateMismatch(e) ? 'spare' : 'used'; }
 
 function mineText() {
   const used = poolOf('used');
@@ -449,10 +520,10 @@ const actions = {
   saveName: () => { const v = $('#nameInput').value.trim(); if (v) { S.settings.name = v.toUpperCase(); save(); } },
   manual: () => { ui.adding = !ui.adding; },
   addManual: () => {
-    const v = { cn: $('#mCn').value.replace(/\D/g, ''), amt: parseAmount($('#mAmt').value), type: $('#mType').value, status: $('#mStatus').value };
+    const v = { cn: $('#mCn').value.replace(/\D/g, ''), amt: parseAmount($('#mAmt').value), type: $('#mType').value, status: $('#mStatus').value, name: $('#mName').value.trim().toUpperCase() || null };
     if (!validEntry(v)) return false;
     const date = reportDate();
-    S.entries.push({ id: uid(), ...v, pay: v.status === 'PAID' ? date : null, recv: null, pool: 'used', flags: [], auto: null, manual: true, src: 'manual', added: Date.now() });
+    S.entries.push({ id: uid(), ...v, day: date, pay: v.status === 'PAID' ? date : null, recv: null, pool: 'used', flags: [], auto: null, manual: true, src: 'manual', added: Date.now() });
     ui.adding = false; save();
   },
   accept: (el) => {
@@ -470,23 +541,25 @@ const actions = {
   toUsed: (el) => { const e = byId(el.dataset.id); e.pool = 'used'; e.manual = true; e.auto = null; ui.openId = null; save(); },
   toSpare: (el) => { const e = byId(el.dataset.id); e.pool = 'spare'; e.manual = true; ui.openId = null; save(); },
   toTrash: (el) => { const e = byId(el.dataset.id); e.pool = 'trash'; e.manual = true; ui.openId = null; save(); toast(t('discarded')); },
-  restoreSpare: () => { poolOf('spare').forEach((e) => { e.pool = 'used'; e.manual = true; }); S.filter = null; ui.fResult = null; save(); },
-  emptyTrash: () => { if (confirm(t('confirmTrash'))) { S.entries = S.entries.filter((e) => e.pool !== 'trash'); save(); } },
+  restoreSpare: () => { poolOf('spare').forEach((e) => { e.pool = 'used'; e.manual = true; }); setFilter(null); ui.fResult = null; save(); },
+  toPayDay: (el) => { const e = byId(el.dataset.id); e.day = e.pay; e.pool = 'used'; e.manual = true; e.auto = null; ui.openId = null; save(); toast(t('movedTo', { d: isoToDmy(e.pay) })); },
+  emptyTrash: () => { if (confirm(t('confirmTrash'))) { S.entries = S.entries.filter((e) => !(e.pool === 'trash' && e.day === reportDate())); save(); } },
   fType: (el) => { ui.fType = el.dataset.v; },
   applyFilter: () => {
     const amounts = $('#fAmounts').value.split(/[,\s;]+/).map(parseAmount).filter((n) => !Number.isNaN(n) && n > 0);
     const target = parseAmount($('#fTarget').value) || 0;
     ui.fAmounts = $('#fAmounts').value; ui.fTarget = $('#fTarget').value;
     const f = { type: ui.fType, amounts, target };
-    const r = applyFilter(S.entries, f);
-    S.entries.forEach((e) => { if (e.pool === 'used' || e.pool === 'spare') { e.manual = true; e.auto = null; } });
-    S.filter = (f.type !== 'ALL' || amounts.length || target) ? f : null;
+    const dayEntries = S.entries.filter((e) => e.day === reportDate());
+    const r = applyFilter(dayEntries, f);
+    dayEntries.forEach((e) => { if (e.pool === 'used' || e.pool === 'spare') { e.manual = true; e.auto = null; } });
+    setFilter((f.type !== 'ALL' || amounts.length || target) ? f : null);
     ui.fResult = target ? t('targetResult', { target: fmtNum(target), best: fmtNum(r.best), diff: fmtNum(round2(target - r.best)) }) : t('filterResult', { used: r.used, spare: r.spare });
     save();
   },
   resetFilter: () => {
-    S.entries.forEach((e) => { if (e.pool === 'spare') { e.pool = 'used'; e.manual = true; } });
-    S.filter = null; ui.fType = 'ALL'; ui.fAmounts = ''; ui.fTarget = ''; ui.fResult = null; save();
+    S.entries.forEach((e) => { if (e.pool === 'spare' && e.day === reportDate()) { e.pool = 'used'; e.manual = true; } });
+    setFilter(null); ui.fType = 'ALL'; ui.fAmounts = ''; ui.fTarget = ''; ui.fResult = null; save();
   },
   pause: () => { OCR.progress.stop = true; },
   resume: () => { startOcr(); return false; },
@@ -494,6 +567,17 @@ const actions = {
   clearFailed: () => { ui.failed = []; },
   shareMine: () => { doShare(mineText()); return false; },
   copyMine: () => { doCopy(mineText()); return false; },
+
+  // weekly
+  wkPrev: () => { ui.weekStart = addDays(weekData().start, -7); },
+  wkNext: () => { ui.weekStart = addDays(weekData().start, 7); },
+  wkThis: () => { ui.weekStart = null; },
+  wkToggle: (el) => { const k = el.dataset.d; if (S.weekly.skip[k]) delete S.weekly.skip[k]; else S.weekly.skip[k] = true; save(); },
+  wkMode: (el) => { S.weekly.mode = el.dataset.v; save(); },
+  wkRead: () => { ui.wkPaste = $('#wkPaste').value; addDailyPasted(); },
+  openDay: (el) => { const d = el.dataset.d; S.settings.dateOverride = d === todayIso() ? null : d; ui.tab = 'report'; ui.pool = 'used'; ui.fResult = null; save(); },
+  wkShare: () => { doShare(weekData().text); return false; },
+  wkCopy: () => { doCopy(weekData().text); return false; },
 
   // leader
   unlock: async () => {
@@ -558,7 +642,7 @@ const actions = {
 
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act]'); if (!el) return;
-  if (el.tagName === 'SUMMARY') { ui.filterOpen = !el.parentElement.open; return; }
+  if (el.tagName === 'SUMMARY') { ui.open[el.dataset.k || 'filter'] = !el.parentElement.open; return; }
   const fn = actions[el.dataset.act]; if (!fn) return;
   const r = await fn(el);
   if (r !== false) render();
@@ -568,7 +652,7 @@ document.addEventListener('change', async (ev) => {
   const el = ev.target;
   if (el.id === 'dateInput') {
     S.settings.dateOverride = el.value && el.value !== todayIso() ? el.value : null;
-    reclass(); save(); render();
+    ui.fType = 'ALL'; ui.fAmounts = ''; ui.fTarget = ''; ui.fResult = null; ui.pool = 'used'; ui.openId = null; save(); render();
   } else if (el.id === 'files') {
     const files = [...el.files]; if (!files.length) return;
     await OCR.enqueue(files); ui.pending = await OCR.pendingCount(); el.value = ''; render(); startOcr();
@@ -595,6 +679,7 @@ document.addEventListener('input', (ev) => {
   else if (el.id === 'rosterPaste') ui.rosterPaste = el.value;
   else if (el.id === 'codeInput') ui.code = el.value;
   else if (el.id === 'newName') ui.newName = el.value;
+  else if (el.id === 'wkPaste') ui.wkPaste = el.value;
   else if (el.id === 'fAmounts') ui.fAmounts = el.value;
   else if (el.id === 'fTarget') ui.fTarget = el.value;
 });
@@ -627,7 +712,7 @@ async function warmCache() {
 (async function init() {
   setLang(S.settings.lang);
   await refreshLicense();
-  reclass();
+  migrate();
   render();
   ui.pending = await OCR.pendingCount();
   if (ui.pending) { render(); startOcr(); }
