@@ -355,7 +355,7 @@ function leaderReceive(res) {
     h += `<section class="card"><h2>${t('whoseTitle')}</h2>${res.unassigned.map((r) => `<div class="unas">
       <div class="small"><b>${esc(r.parsed.name || r.sender || t('noSender'))}</b> · ${t('cn', { n: r.parsed.entries.length })} · ${fmtNum(round2(r.parsed.entries.filter((e) => e.status !== 'UNPAID' && !Number.isNaN(e.amt)).reduce((a, e) => a + e.amt, 0)))}</div>
       <div class="muted small mono">${esc(r.parsed.entries[0]?.cn || '')}…</div>
-      <div class="chips">${S.leader.roster.map((m) => `<button class="chip" data-act="assign" data-r="${r.id}" data-m="${m.id}">${esc(m.name)}</button>`).join('')}
+      <div class="chips">${(() => { const c = r.parsed.name || (r.sender && /[A-Za-z]/.test(r.sender) ? r.sender : ''); return c ? `<button class="chip on" data-act="assignNew" data-r="${r.id}">+ ${esc(c.toUpperCase())}</button>` : ''; })()}${S.leader.roster.map((m) => `<button class="chip" data-act="assign" data-r="${r.id}" data-m="${m.id}">${esc(m.name)}</button>`).join('')}
       <button class="chip danger" data-act="dropReport" data-r="${r.id}">${t('remove')}</button></div></div>`).join('')}</section>`;
   }
   h += `<section class="card"><h2>${t('statusTitle')}</h2><ul class="plain status">${res.members.map((m) => {
@@ -377,12 +377,20 @@ function leaderIssues(res) {
       <div class="chips">${d.claims.map((c) => `<button class="chip ${chosen === c.memberId ? 'on' : ''}" data-act="resolve" data-cn="${i.cn}" data-m="${c.memberId}">${esc(nameOf(c.memberId))}: ${fmtNum(c.amt)} ${c.type}</button>`).join('')}
       <button class="chip ${chosen === 'none' ? 'on' : ''}" data-act="resolve" data-cn="${i.cn}" data-m="none">${t('leaveOut')}</button></div></div>`;
   });
+  res.issues.filter((i) => i.kind === 'withinconflict').forEach((i) => {
+    const d = i.data;
+    h += `<div class="conf"><div class="small"><b>${esc(nameOf(i.memberId))}</b> · <span class="mono">${i.cn}</span></div>
+      <div class="chips">${d.options.map((o, k) => `<button class="chip ${d.chosen === k ? 'on' : ''}" data-act="resolveW" data-key="${esc(d.key)}" data-i="${k}">${fmtNum(o.amt)} ${o.type}</button>`).join('')}</div></div>`;
+  });
+  res.issues.filter((i) => i.severity === 'error' && !i.resolved && ['cnformat', 'type', 'noamount'].includes(i.kind) && !session().ack).forEach((i) => {
+    h += `<div class="conf"><div class="small"><b>${esc(nameOf(i.memberId))}</b></div><div class="bad small">${esc(issueText(i, nameOf, lang()))}</div></div>`;
+  });
   res.issues.filter((i) => i.kind === 'date').forEach((i) => {
     h += `<div class="conf"><div>${esc(nameOf(i.memberId))}: ${esc(issueText(i, nameOf, lang()))}</div>
       <div class="chips"><button class="chip ${session().force[i.data.reportId] ? 'on' : ''}" data-act="force" data-r="${i.data.reportId}">${t('useAnyway')}</button></div></div>`;
   });
   h += `</section>`;
-  const others = res.issues.filter((i) => i.kind !== 'conflict' && i.kind !== 'date');
+  const others = res.issues.filter((i) => !['conflict', 'date', 'withinconflict'].includes(i.kind) && !(i.severity === 'error' && !i.resolved && ['cnformat', 'type', 'noamount'].includes(i.kind) && !session().ack));
   if (others.length) {
     h += `<section class="card"><h2>${t('otherIssues')}</h2>` + res.members.map((m) => {
       const list = others.filter((i) => i.memberId === m.member.id);
@@ -593,6 +601,20 @@ const actions = {
     const s = session(); const r = s.reports.find((x) => x.id === el.dataset.r); const m = mById(el.dataset.m);
     r.memberId = m.id;
     if (r.sender && !(m.aliases || []).includes(r.sender)) m.aliases = [...(m.aliases || []), r.sender];
+    save();
+  },
+  assignNew: (el) => {
+    const s = session(); const r = s.reports.find((x) => x.id === el.dataset.r);
+    const nm = (r.parsed.name || r.sender || '').toUpperCase().trim(); if (!nm) return false;
+    let m = S.leader.roster.find((x) => x.name.toUpperCase() === nm);
+    if (!m) { m = { id: uid(), name: nm, aliases: [] }; S.leader.roster.push(m); }
+    r.memberId = m.id;
+    if (r.sender && r.sender.toUpperCase() !== nm && !(m.aliases || []).includes(r.sender)) m.aliases = [...(m.aliases || []), r.sender];
+    save(); toast(t('memberAdded', { n: nm }));
+  },
+  resolveW: (el) => {
+    const s = session(); const k = el.dataset.key;
+    if (s.resolutions[k] === el.dataset.i) delete s.resolutions[k]; else s.resolutions[k] = el.dataset.i;
     save();
   },
   dropReport: (el) => { const s = session(); s.reports = s.reports.filter((r) => r.id !== el.dataset.r); save(); },

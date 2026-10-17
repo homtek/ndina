@@ -1,6 +1,6 @@
 // Interface text. Swahili first, English second. Report wording for WhatsApp lives in core/format.js.
 const sw = {
-  totalToday: 'Jumla ya siku', navWeek: 'Wiki', totalWeek: 'Jumla ya wiki', prevWeek: 'Wiki iliyopita', nextWeek: 'Wiki ijayo', daysTitle: 'Siku',
+  totalToday: 'Jumla ya siku', memberAdded: '{n} ameongezwa', navWeek: 'Wiki', totalWeek: 'Jumla ya wiki', prevWeek: 'Wiki iliyopita', nextWeek: 'Wiki ijayo', daysTitle: 'Siku',
   day0: 'Jumatatu', day1: 'Jumanne', day2: 'Jumatano', day3: 'Alhamisi', day4: 'Ijumaa', day5: 'Jumamosi', day6: 'Jumapili',
   noData: 'Hakuna data', toCheck: 'hakiki {n}', useDay: 'Tumia', skipDay: 'Ruka', addDay: 'Ongeza',
   weekFormat: 'Muundo wa ripoti ya wiki', modeSum: 'Muhtasari', modeFull: 'Kamili',
@@ -71,7 +71,7 @@ const sw = {
 };
 
 const en = {
-  totalToday: 'Total for the day', navWeek: 'Week', totalWeek: 'Total for the week', prevWeek: 'Previous week', nextWeek: 'Next week', daysTitle: 'Days',
+  totalToday: 'Total for the day', memberAdded: '{n} added', navWeek: 'Week', totalWeek: 'Total for the week', prevWeek: 'Previous week', nextWeek: 'Next week', daysTitle: 'Days',
   day0: 'Monday', day1: 'Tuesday', day2: 'Wednesday', day3: 'Thursday', day4: 'Friday', day5: 'Saturday', day6: 'Sunday',
   noData: 'No data', toCheck: '{n} to check', useDay: 'Use', skipDay: 'Skip', addDay: 'Add',
   weekFormat: 'Weekly report format', modeSum: 'Summary', modeFull: 'Full',

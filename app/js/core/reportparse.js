@@ -7,6 +7,7 @@ const SUMMARY_START = /^(total|jumla|idadi|bl\b|sl\b|paid|unpaid)/i;
 const NOT_A_NAME = /^(paid|unpaid|total|jumla|idadi|bl|sl|tar|tarehe|taarifa|date|jina|name|hello|habari|poa|asante|salaam|imechujwa)\b/i;
 
 // numbers written as 1,000 / 1.000 / 111;200 / 41,271.20 / 2,550,000.
+const cleanName = (n) => String(n || '').replace(/^[^A-Za-z]+/, '').replace(/[^A-Za-z]+$/, '').replace(/\s+/g, ' ').trim();
 const num = (s) => (s == null ? NaN : parseAmount(String(s).replace(/;/g, ',').replace(/[.,;]+$/, '')));
 
 // Pull type / amount / status out of loose text such as "-600,000blpaid", "----200,000-Paid", "200,000 PAID".
@@ -16,7 +17,13 @@ function fields(str) {
   r = r.replace(/unpaid|paid/g, ' ');
   const tm = r.match(/(?<![a-z])(bl|sl)(?![a-z])/);
   const nm = r.match(/\d[\d,.;]*/);
-  return { type: tm ? tm[1].toUpperCase() : null, amt: nm ? num(nm[0]) : NaN, status };
+  // a strange word where the type should be ("FAIN"): remember it, do not guess
+  let rawType = null;
+  if (!tm) {
+    const w = (r.replace(/\d[\d,.;]*/g, ' ').match(/[a-z]{2,}/g) || []).filter((x) => !['tsh', 'tzs', 'shs', 'cn'].includes(x));
+    if (w.length) rawType = w[0].toUpperCase();
+  }
+  return { type: tm ? tm[1].toUpperCase() : null, amt: nm ? num(nm[0]) : NaN, status, rawType };
 }
 
 // Totals members write at the end of a report. Returns the type this line talks about (if any).
@@ -34,6 +41,9 @@ function parseSummary(l, declared, hints) {
   if (/^(total|jumla)/i.test(l)) {
     v = grab(/\bBL\s*(?:PAID)?\s*[-:=]\s*(\d[\d,.;]*)/i); if (!Number.isNaN(v)) declared.bl = v;
     v = grab(/\bSL\s*(?:PAID)?\s*[-:=]\s*(\d[\d,.;]*)/i); if (!Number.isNaN(v)) declared.sl = v;
+    // "Jumla PAID-2,285,264.98" is the paid total; "Jumla-640,000" / "Jumla kuu-2,475,264.98" count everything
+    v = grab(/jumla\s*paid\s*[-:=]\s*(\d[\d,.;]*)/i); if (!Number.isNaN(v)) declared.paid = v;
+    v = grab(/jumla\s*(?:kuu)?\s*[-:=]\s*(\d[\d,.;]*)/i); if (!Number.isNaN(v)) declared.total = v;
   }
   // "BL=2,550,000", "Sl-2,011,243", "Total bl-4,036,500/="
   const tm = l.match(/^(?:total\s*)?(bl|sl)\s*(?:paid)?\s*[-:=.\s]+\s*(\d[\d,.;]*)/i);
@@ -66,7 +76,7 @@ export function parseReport(text) {
     }
     const nm = l.match(/^(?:jina|name)\s*[:\-]\s*(.+)$/i);
     if (nm && !name) { name = nm[1].trim(); return; }
-    if (/^\u2b55/.test(l) && !name) { name = l.replace(/^[\u2b55\ufe0f\s]+/, '').trim(); return; }
+    if (/^\u2b55/.test(l) && !name) { name = cleanName(l.replace(/^[\u2b55\ufe0f\s]+/, '')); return; }
     if (/^imechujwa/i.test(l)) { filterNote = l; return; }
     if (/^total\s+jana\b/i.test(l)) { flush(); for (let i = blockStart; i < entries.length; i++) entries[i].carry = true; blockStart = entries.length; return; }
     if (/^total\s+leo\b/i.test(l)) { flush(); blockStart = entries.length; return; }
@@ -83,11 +93,19 @@ export function parseReport(text) {
       }
     }
 
-    const cn = l.match(CN_START);
+    let cn = l.match(CN_START);
+    let dashedRest = null;
+    if (!cn) {
+      // "167-345-646-200,000 BL": a control number typed with dashes. Keep it so it gets flagged, not lost.
+      const dm = l.match(/^(\d{1,4}(?:[- ]\d{1,4}){2,4})\s*[-–—:=]\s*(\d[\d,.;]*)(.*)$/);
+      const digits = dm ? dm[1].replace(/\D/g, '') : '';
+      if (dm && digits.length >= 9 && digits.length <= 14) { cn = [dm[0], digits]; dashedRest = dm[2] + dm[3]; }
+    }
     if (cn) {
       flush();
-      const f = fields(l.slice(cn[0].length));
+      const f = fields(dashedRest != null ? dashedRest : l.slice(cn[0].length));
       const e = { cn: cn[1], amt: f.amt, type: f.type || '?', status: f.status || ctx, carry: false };
+      if (!f.type && f.rawType) e.rawType = f.rawType;
       if (Number.isNaN(f.amt)) pending = e; else entries.push(e);
       return;
     }
@@ -108,7 +126,7 @@ export function parseReport(text) {
   if (declared.sl > 0) hints.add('SL');
   if (hints.size === 1) {
     const only = [...hints][0];
-    entries.forEach((e) => { if (e.type === '?') { e.type = only; e.inferred = true; } });
+    entries.forEach((e) => { if (e.type === '?' && !e.rawType) { e.type = only; e.inferred = true; } });
   }
   return { date, name, entries, declared, filterNote };
 }
@@ -119,8 +137,8 @@ export function extractNames(text) {
   String(text || '').split(/\r?\n/).forEach((raw) => {
     const l = raw.replace(/[_*~]/g, '').trim();
     if (!/^\u2b55/.test(l)) return;
-    const n = l.replace(/^[\u2b55\ufe0f\s]+/, '').trim();
-    if (n && !/^\d/.test(n) && !out.includes(n)) out.push(n);
+    const n = cleanName(l.replace(/^[\u2b55\ufe0f\s]+/, ''));
+    if (n && !out.includes(n)) out.push(n);
   });
   return out;
 }
@@ -138,6 +156,13 @@ function tsOf(d, mo, y, h, mi, ap) {
   return new Date(yy, mm - 1, dd, hh, Number(mi)).getTime();
 }
 
+// The totals block at the bottom of a compiled report belongs to nobody: cut it off.
+const FOOTER = /^(total\s+(paid|unpaid)\b.*\d{1,2}[./]\d{1,2}[./]\d{2,4}|jumla\s+kuu\b)/i;
+function cutFooter(lines) {
+  const i = lines.findIndex((l) => FOOTER.test(clean(l)));
+  return i >= 0 ? lines.slice(0, i) : lines;
+}
+
 export function splitMessages(text) {
   const rawLines = String(text || '').replace(/\u200e|\u200f/g, '').split(/\r?\n/);
   const msgs = [];
@@ -153,6 +178,7 @@ export function splitMessages(text) {
   // Split any message holding several "Tar dd.mm.yyyy" reports.
   const out = [];
   for (const mg of msgs) {
+    mg.lines = cutFooter(mg.lines);
     if (!mg.sender) { out.push(...splitBare(mg.lines)); continue; }
     const starts = [];
     mg.lines.forEach((l, i) => { if (/^[_*\s]*(tar|tarehe)\b\W*\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}/i.test(l)) starts.push(i); });

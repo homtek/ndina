@@ -47,31 +47,38 @@ export function compile({ roster, session, date, prefix = '99' }) {
     const carry = p.entries.filter((e) => e.carry);
     if (carry.length) addIssue({ kind: 'carry', memberId: m.id, data: { n: carry.length, cns: carry.map((e) => e.cn) } });
 
-    const seen = new Set();
     const live = p.entries.filter((e) => !e.carry);
+    // Every line the member wrote (used to check THEIR arithmetic, before we drop anything).
+    const written = live.filter((e) => Number.isFinite(e.amt) && (e.type === 'BL' || e.type === 'SL'));
+    const groups = new Map();
     for (const e of live) {
       if (Number.isNaN(e.amt)) { addIssue({ kind: 'noamount', memberId: m.id, severity: 'error', cn: e.cn }); continue; }
-      if (!cnOk(e.cn, prefix)) {
-        addIssue({ kind: 'cnformat', memberId: m.id, severity: 'error', cn: e.cn, data: { amt: e.amt } });
-        continue;
-      }
-      if (e.type !== 'BL' && e.type !== 'SL') {
-        addIssue({ kind: 'type', memberId: m.id, severity: 'error', cn: e.cn });
-        continue;
-      }
-      if (seen.has(e.cn)) { addIssue({ kind: 'within', memberId: m.id, cn: e.cn }); continue; }
-      seen.add(e.cn);
-      entries.push(e);
+      if (!cnOk(e.cn, prefix)) { addIssue({ kind: 'cnformat', memberId: m.id, severity: 'error', cn: e.cn, data: { amt: e.amt } }); continue; }
+      if (e.type !== 'BL' && e.type !== 'SL') { addIssue({ kind: 'type', memberId: m.id, severity: 'error', cn: e.cn, data: { raw: e.rawType || null } }); continue; }
+      if (!groups.has(e.cn)) groups.set(e.cn, []);
+      groups.get(e.cn).push(e);
+    }
+    for (const [cn, g] of groups) {
+      if (g.length === 1) { entries.push(g[0]); continue; }
+      if (g.every((x) => sameClaim(x, g[0]))) { addIssue({ kind: 'within', memberId: m.id, cn }); entries.push(g[0]); continue; }
+      // same control number written twice with different amounts: the leader (or the member) must say which is right
+      const key = `w:${m.id}:${cn}`;
+      const res = session.resolutions?.[key];
+      const chosen = res != null ? Number(res) : (session.ack ? 0 : null);
+      addIssue({ kind: 'withinconflict', memberId: m.id, cn, severity: chosen == null ? 'error' : 'warn', resolved: chosen != null,
+        data: { key, chosen, options: g.map((x) => ({ amt: x.amt, type: x.type, status: x.status })) } });
+      if (chosen != null && g[chosen]) entries.push(g[chosen]);
     }
 
-    // Declared totals versus the lines.
+    // Declared totals versus the lines they wrote.
     const d = p.declared || {};
     const sum = (list, f) => round2(list.filter(f).reduce((a, e) => a + e.amt, 0));
-    const paid = entries.filter((e) => e.status === 'PAID');
+    const paid = written.filter((e) => e.status === 'PAID');
     if (d.count != null && d.count !== live.length) addIssue({ kind: 'count', memberId: m.id, data: { declared: d.count, actual: live.length } });
+    const unknownType = live.some((e) => Number.isFinite(e.amt) && e.type !== 'BL' && e.type !== 'SL'); // already reported as a type problem
     const chk = (what, declared, f) => {
-      if (declared == null) return;
-      const a = sum(paid, f), b = sum(entries, f);
+      if (declared == null || (unknownType && what !== 'TOTAL')) return;
+      const a = sum(paid, f), b = sum(written, f);
       if (Math.abs(declared - a) > 0.5 && Math.abs(declared - b) > 0.5) addIssue({ kind: 'sum', memberId: m.id, what, data: { declared, actual: a } });
     };
     chk('BL', d.bl, (e) => e.type === 'BL');
@@ -83,7 +90,7 @@ export function compile({ roster, session, date, prefix = '99' }) {
       if (Math.abs(declared - a) > 0.5) addIssue({ kind: 'sum', memberId: m.id, what, data: { declared, actual: a } });
     };
     sumKind('PAID', d.paid, paid);
-    sumKind('UNPAID', d.unpaid, entries.filter((e) => e.status === 'UNPAID'));
+    sumKind('UNPAID', d.unpaid, written.filter((e) => e.status === 'UNPAID'));
     const inferred = entries.filter((e) => e.inferred);
     if (inferred.length) addIssue({ kind: 'inferred', memberId: m.id, data: { n: inferred.length, type: inferred[0].type } });
 

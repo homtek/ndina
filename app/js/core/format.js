@@ -122,7 +122,13 @@ export function issueText(issue, nameOf, lang = 'sw') {
     case 'cnformat': return sw ? `${issue.cn} si control number sahihi (tarakimu 12). Imeondolewa.` : `${issue.cn} is not a valid control number (12 digits). Left out.`;
     case 'noamount': return sw ? `${issue.cn} haina kiasi. Imeondolewa.` : `${issue.cn} has no amount. Left out.`;
     case 'inferred': return sw ? `Mistari ${d.n} haina aina. Imechukuliwa kuwa ${d.type} kutoka kwenye jumla. Andika ${d.type} kwenye kila mstari.` : `${d.n} lines had no type. Taken as ${d.type} from your totals. Write ${d.type} on each line.`;
-    case 'type': return sw ? `${issue.cn} haina aina (BL au SL). Imeondolewa.` : `${issue.cn} has no type (BL or SL). Left out.`;
+    case 'type': return d.raw
+      ? (sw ? `${issue.cn} ina aina isiyojulikana "${d.raw}" (inatakiwa BL au SL). Imeondolewa.` : `${issue.cn} has an unknown type "${d.raw}" (should be BL or SL). Left out.`)
+      : (sw ? `${issue.cn} haina aina (BL au SL). Imeondolewa.` : `${issue.cn} has no type (BL or SL). Left out.`);
+    case 'withinconflict': {
+      const o = d.options.map((x) => `${fmtNum(x.amt)} ${x.type}`).join(' / ');
+      return sw ? `${issue.cn} imeandikwa mara ${d.options.length} kwa viasi tofauti: ${o}. Hakikisheni kwenye screenshot.` : `${issue.cn} was written ${d.options.length} times with different amounts: ${o}. Check the screenshot.`;
+    }
     case 'count': return sw ? `Umeandika Total C/N:${d.declared} lakini mistari ni ${d.actual}.` : `You wrote Total C/N:${d.declared} but there are ${d.actual} lines.`;
     case 'sum': { const w = issue.what === 'TOTAL' ? 'Amount' : issue.what === 'PAID' ? 'Paid' : issue.what === 'UNPAID' ? 'Unpaid' : issue.what; return sw ? `Total ${w} uliyoandika ni ${fmtNum(d.declared)}, mistari inajumlisha ${fmtNum(d.actual)}.` : `Your Total ${w} says ${fmtNum(d.declared)} but the lines add up to ${fmtNum(d.actual)}.`; }
     case 'date': return sw ? `Ripoti ni ya tarehe ${isoToDmy(d.date)}, si ya siku hii.` : `Report is dated ${isoToDmy(d.date)}, not this day.`;
