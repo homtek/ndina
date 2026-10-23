@@ -1,6 +1,10 @@
 // Interface text. Swahili first, English second. Report wording for WhatsApp lives in core/format.js.
 const sw = {
-  totalToday: 'Jumla ya siku', memberAdded: '{n} ameongezwa', navWeek: 'Wiki', totalWeek: 'Jumla ya wiki', prevWeek: 'Wiki iliyopita', nextWeek: 'Wiki ijayo', daysTitle: 'Siku',
+  totalToday: 'Jumla ya siku', xlTitle: 'Excel ya wiki', xlHint: 'Fomu ya Ripoti ya Wiki, Kanda Na. 02. Jina la afisa linarudiwa kwenye kila mstari. Mistari ya UNPAID haiingii isipokuwa uchague.',
+  xlUnpaid: 'Jumuisha UNPAID', xlRows: 'Mistari {n}', xlMissing: 'Mistari {n} haina Mtaa au TIN. Jaza kwenye Hariri (hukumbukwa kwa jina la mfanyabiashara) au kwenye Excel.',
+  xlShare: 'Tuma Excel', xlDownload: 'Pakua', xlBuilding: 'Inaandaa Excel…', xlSaved: 'Excel imeandaliwa: mistari {n}.', xlFail: 'Excel imeshindwa. Unganisha data mara moja kisha jaribu tena.',
+  needNameXl: 'Weka jina lako kwanza (Zaidi).', mtaa: 'Mtaa',
+  memberAdded: '{n} ameongezwa', navWeek: 'Wiki', totalWeek: 'Jumla ya wiki', prevWeek: 'Wiki iliyopita', nextWeek: 'Wiki ijayo', daysTitle: 'Siku',
   day0: 'Jumatatu', day1: 'Jumanne', day2: 'Jumatano', day3: 'Alhamisi', day4: 'Ijumaa', day5: 'Jumamosi', day6: 'Jumapili',
   noData: 'Hakuna data', toCheck: 'hakiki {n}', useDay: 'Tumia', skipDay: 'Ruka', addDay: 'Ongeza',
   weekFormat: 'Muundo wa ripoti ya wiki', modeSum: 'Muhtasari', modeFull: 'Kamili',
@@ -71,7 +75,11 @@ const sw = {
 };
 
 const en = {
-  totalToday: 'Total for the day', memberAdded: '{n} added', navWeek: 'Week', totalWeek: 'Total for the week', prevWeek: 'Previous week', nextWeek: 'Next week', daysTitle: 'Days',
+  totalToday: 'Total for the day', xlTitle: 'Weekly Excel', xlHint: 'Weekly report form, Kanda No. 02. The officer name is repeated on every row. UNPAID lines are left out unless you choose them.',
+  xlUnpaid: 'Include UNPAID', xlRows: '{n} rows', xlMissing: '{n} rows have no Mtaa or TIN. Fill them in Edit (remembered by trader name) or in Excel.',
+  xlShare: 'Send Excel', xlDownload: 'Download', xlBuilding: 'Preparing Excel…', xlSaved: 'Excel ready: {n} rows.', xlFail: 'Excel failed. Connect to data once, then try again.',
+  needNameXl: 'Set your name first (More).', mtaa: 'Street (Mtaa)',
+  memberAdded: '{n} added', navWeek: 'Week', totalWeek: 'Total for the week', prevWeek: 'Previous week', nextWeek: 'Next week', daysTitle: 'Days',
   day0: 'Monday', day1: 'Tuesday', day2: 'Wednesday', day3: 'Thursday', day4: 'Friday', day5: 'Saturday', day6: 'Sunday',
   noData: 'No data', toCheck: '{n} to check', useDay: 'Use', skipDay: 'Skip', addDay: 'Add',
   weekFormat: 'Weekly report format', modeSum: 'Summary', modeFull: 'Full',

@@ -8,7 +8,9 @@ import { parseReport, splitMessages, extractNames, matchMember } from './core/re
 import { compile } from './core/compile.js';
 import { verifyCode } from './core/license.js';
 import * as OCR from './ocr.js';
-import { copyText, shareWhatsApp, download } from './share.js';
+import { copyText, shareWhatsApp, download, downloadBlob, shareFile } from './share.js';
+import { buildWeeklyXlsx } from './xlsx.js';
+import { weeklyRows } from './core/weeklyxlsx.js';
 
 // ---------- UI state (not saved) ----------
 const ui = {
@@ -33,6 +35,12 @@ const sorted = (list) => [...list].sort((a, b) => a.added - b.added);
 const poolOf = (p) => sorted(S.entries.filter((e) => e.pool === p && e.day === reportDate()));
 const sumOf = (list, type) => round2(list.filter((e) => !type || e.type === type).reduce((a, e) => a + e.amt, 0));
 const dateMismatch = (e) => e.status === 'PAID' && e.pay && e.pay !== e.day;
+// Mtaa and TIN are typed once; every entry of the same business gets them.
+const knownTrader = (name) => (name ? [...S.entries].reverse().find((e) => e.name === name && (e.mtaa || e.tin)) : null);
+function propagate(e) {
+  if (!e.name || !(e.mtaa || e.tin)) return;
+  S.entries.forEach((x) => { if (x.name === e.name) { if (!x.mtaa && e.mtaa) x.mtaa = e.mtaa; if (!x.tin && e.tin) x.tin = e.tin; } });
+}
 const curFilter = () => S.filters[reportDate()] || null;
 const setFilter = (f) => { if (f) S.filters[reportDate()] = f; else delete S.filters[reportDate()]; };
 
@@ -62,6 +70,7 @@ function ingest(res, name) {
     id: uid(), cn: res.cn, amt: res.amount, type: res.type || '?', status: 'PAID', pay: res.pay, recv: res.recv, day: date, name: res.name || null,
     words: res.words ?? null, pool: 'used', flags, auto: null, manual: false, src: 'ocr', added: Date.now() + S.entries.length,
   };
+  const kt = knownTrader(e.name); if (kt) { e.mtaa = kt.mtaa || null; e.tin = kt.tin || null; }
   if (flags.length) e.pool = 'review';
   else if (res.pay !== date) { e.pool = 'spare'; e.auto = 'date'; }
   S.entries.push(e);
@@ -200,6 +209,7 @@ function manualForm() {
     <label class="field"><span class="lbl">${t('control')}</span><input id="mCn" inputmode="numeric" maxlength="12" placeholder="992041400527"></label>
     <label class="field"><span class="lbl">${t('amount')}</span><input id="mAmt" inputmode="decimal" placeholder="80000"></label>
     <label class="field"><span class="lbl">${t('payerName')}</span><input id="mName" autocomplete="off"></label>
+    <div class="row"><label class="field"><span class="lbl">${t('mtaa')}</span><input id="mMtaa" autocomplete="off"></label><label class="field"><span class="lbl">TIN</span><input id="mTin" inputmode="numeric" autocomplete="off"></label></div>
     <div><span class="lbl">${t('type')}</span><select id="mType"><option>BL</option><option>SL</option></select></div>
     <div><span class="lbl">${t('status')}</span><select id="mStatus"><option value="PAID">PAID</option><option value="UNPAID">UNPAID</option></select></div>
     <div class="row"><button class="btn primary" data-act="addManual">${t('add')}</button><button class="btn" data-act="manual">${t('cancel')}</button></div></div></section>`;
@@ -210,6 +220,7 @@ function entryForm(e, accept) {
     <label class="field"><span class="lbl">${t('control')}</span><input data-f="cn" inputmode="numeric" maxlength="12" value="${esc(e.cn)}"></label>
     <label class="field"><span class="lbl">${t('amount')}</span><input data-f="amt" inputmode="decimal" value="${e.amt}"></label>
     <label class="field"><span class="lbl">${t('payerName')}</span><input data-f="name" autocomplete="off" value="${esc(e.name || '')}"></label>
+    <div class="row"><label class="field"><span class="lbl">${t('mtaa')}</span><input data-f="mtaa" autocomplete="off" value="${esc(e.mtaa || '')}"></label><label class="field"><span class="lbl">TIN</span><input data-f="tin" inputmode="numeric" autocomplete="off" value="${esc(e.tin || '')}"></label></div>
     <div class="row"><select data-f="type"><option ${e.type === 'BL' ? 'selected' : ''}>BL</option><option ${e.type === 'SL' ? 'selected' : ''}>SL</option><option value="?" ${e.type === '?' ? 'selected' : ''}>?</option></select>
     <select data-f="status"><option ${e.status === 'PAID' ? 'selected' : ''}>PAID</option><option ${e.status === 'UNPAID' ? 'selected' : ''}>UNPAID</option></select></div>
     <div class="row"><button class="btn primary" data-act="${accept ? 'accept' : 'saveEdit'}" data-id="${e.id}">${accept ? t('accept') : t('save')}</button>
@@ -286,9 +297,31 @@ function viewWeek() {
     <p class="muted small">${t('pasteDailyHint')}</p>
     <textarea id="wkPaste" rows="6" placeholder="Tar ${isoToDmy(reportDate())}\n992041400527-80,000 BL PAID…">${esc(ui.wkPaste)}</textarea>
     <button class="btn primary" data-act="wkRead">${t('addDaily')}</button></details>`;
+  const xl = weeklyRows(w.inc.map((r) => ({ date: r.d, entries: r.used })), { includeUnpaid: !!S.weekly.unpaid });
+  const noMeta = xl.filter((r) => !r.mtaa || !r.tin).length;
+  h += `<section class="card"><h2>${t('xlTitle')}</h2><p class="muted small">${t('xlHint')}</p>
+    <div class="row"><button class="chip ${S.weekly.unpaid ? 'on' : ''}" data-act="xlUnpaid">${t('xlUnpaid')}</button><span class="muted small">${t('xlRows', { n: xl.length })}</span></div>
+    ${xl.length && noMeta ? `<p class="note warnline">${t('xlMissing', { n: noMeta })}</p>` : ''}
+    <div class="row" style="margin-top:12px"><button class="btn primary" data-act="xlShare" ${xl.length ? '' : 'disabled'}>${t('xlShare')}</button><button class="btn" data-act="xlDownload" ${xl.length ? '' : 'disabled'}>${t('xlDownload')}</button></div></section>`;
   if (w.text) h += `<details class="preview" ${ui.open.prev ? 'open' : ''}><summary data-act="toggle" data-k="prev">${t('seeMessage')}</summary><pre>${esc(w.text)}</pre></details>`;
   h += `<div class="actionbar"><button class="btn primary" data-act="wkShare" ${w.text ? '' : 'disabled'}>${t('sendWa')}</button><button class="btn" data-act="wkCopy" ${w.text ? '' : 'disabled'}>${t('copy')}</button></div>`;
   return h;
+}
+
+async function makeExcel(share) {
+  if (!S.settings.name) { toast(t('needNameXl')); return; }
+  const w = weekData();
+  toast(t('xlBuilding'));
+  try {
+    const { blob, count } = await buildWeeklyXlsx({
+      officer: S.settings.name, includeUnpaid: !!S.weekly.unpaid,
+      days: w.inc.map((r) => ({ date: r.d, entries: r.used })),
+      title: `Ripoti ya wiki ${isoToDmy(w.dates[0])} - ${isoToDmy(w.dates[6])}`,
+    });
+    const name = `RIPOTI_YA_WIKI_KANDA_02_${S.settings.name.replace(/[^A-Za-z0-9]+/g, '_')}_${isoToDmy(w.dates[0]).slice(0, 5)}-${isoToDmy(w.dates[6])}.xlsx`;
+    if (share) { const r = await shareFile(blob, name, name); if (r === 'downloaded') toast(t('xlSaved', { n: count })); }
+    else { downloadBlob(name, blob); toast(t('xlSaved', { n: count })); }
+  } catch { toast(t('xlFail')); }
 }
 
 // Entries from pasted daily reports go into the day written in each report.
@@ -471,7 +504,7 @@ const mById = (id) => S.leader.roster.find((m) => m.id === id);
 
 function readForm(box) {
   const g = (f) => box.querySelector(`[data-f="${f}"]`).value.trim();
-  return { cn: g('cn').replace(/\D/g, ''), amt: parseAmount(g('amt')), type: g('type'), status: g('status'), name: g('name').toUpperCase() || null };
+  return { cn: g('cn').replace(/\D/g, ''), amt: parseAmount(g('amt')), type: g('type'), status: g('status'), name: g('name').toUpperCase() || null, mtaa: g('mtaa').toUpperCase() || null, tin: g('tin') || null };
 }
 function validEntry(v, selfId) {
   if (!cnOk(v.cn, '99')) { toast(t('badCn')); return false; }
@@ -528,10 +561,11 @@ const actions = {
   saveName: () => { const v = $('#nameInput').value.trim(); if (v) { S.settings.name = v.toUpperCase(); save(); } },
   manual: () => { ui.adding = !ui.adding; },
   addManual: () => {
-    const v = { cn: $('#mCn').value.replace(/\D/g, ''), amt: parseAmount($('#mAmt').value), type: $('#mType').value, status: $('#mStatus').value, name: $('#mName').value.trim().toUpperCase() || null };
+    const v = { cn: $('#mCn').value.replace(/\D/g, ''), amt: parseAmount($('#mAmt').value), type: $('#mType').value, status: $('#mStatus').value, name: $('#mName').value.trim().toUpperCase() || null, mtaa: $('#mMtaa').value.trim().toUpperCase() || null, tin: $('#mTin').value.trim() || null };
     if (!validEntry(v)) return false;
     const date = reportDate();
     S.entries.push({ id: uid(), ...v, day: date, pay: v.status === 'PAID' ? date : null, recv: null, pool: 'used', flags: [], auto: null, manual: true, src: 'manual', added: Date.now() });
+    propagate(S.entries[S.entries.length - 1]);
     ui.adding = false; save();
   },
   accept: (el) => {
@@ -539,12 +573,12 @@ const actions = {
     if (!validEntry(v, e.id)) return false;
     S.entries = S.entries.filter((x) => !(x.cn === v.cn && x.id !== e.id && x.pool !== 'review'));
     Object.assign(e, v, { flags: [], manual: false });
-    e.pool = poolForDate(e); e.auto = e.pool === 'spare' ? 'date' : null; save();
+    e.pool = poolForDate(e); e.auto = e.pool === 'spare' ? 'date' : null; propagate(e); save();
   },
   saveEdit: (el) => {
     const e = byId(el.dataset.id); const v = readForm(el.closest('.edit'));
     if (!validEntry(v, e.id)) return false;
-    Object.assign(e, v); ui.editing = null; save();
+    Object.assign(e, v); ui.editing = null; propagate(e); save();
   },
   toUsed: (el) => { const e = byId(el.dataset.id); e.pool = 'used'; e.manual = true; e.auto = null; ui.openId = null; save(); },
   toSpare: (el) => { const e = byId(el.dataset.id); e.pool = 'spare'; e.manual = true; ui.openId = null; save(); },
@@ -584,6 +618,9 @@ const actions = {
   wkMode: (el) => { S.weekly.mode = el.dataset.v; save(); },
   wkRead: () => { ui.wkPaste = $('#wkPaste').value; addDailyPasted(); },
   openDay: (el) => { const d = el.dataset.d; S.settings.dateOverride = d === todayIso() ? null : d; ui.tab = 'report'; ui.pool = 'used'; ui.fResult = null; save(); },
+  xlUnpaid: () => { S.weekly.unpaid = !S.weekly.unpaid; save(); },
+  xlShare: () => { makeExcel(true); return false; },
+  xlDownload: () => { makeExcel(false); return false; },
   wkShare: () => { doShare(weekData().text); return false; },
   wkCopy: () => { doCopy(weekData().text); return false; },
 
@@ -716,17 +753,18 @@ async function refreshLicense() {
 // Download the reading engine once, so Ndina also works with no data later.
 async function warmCache() {
   try {
-    if (localStorage.getItem('ndina.warm') === '1' || !navigator.onLine) return;
+    if (localStorage.getItem('ndina.warm') === '2' || !navigator.onLine) return;
     await navigator.serviceWorker.ready;
     if (!navigator.serviceWorker.controller) {
       await new Promise((r) => { navigator.serviceWorker.addEventListener('controllerchange', r, { once: true }); setTimeout(r, 4000); });
     }
     if (!navigator.serviceWorker.controller) return; // next visit
     const simd = WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11]));
-    const base = './vendor/tesseract/';
-    const urls = ['tesseract.min.js', 'worker.min.js', simd ? 'core/tesseract-core-simd-lstm.wasm.js' : 'core/tesseract-core-lstm.wasm.js', 'lang/eng.traineddata.gz'];
-    for (const u of urls) { const r = await fetch(base + u); if (!r.ok) return; await r.arrayBuffer(); }
-    localStorage.setItem('ndina.warm', '1');
+    const t0 = './vendor/tesseract/';
+    const urls = ['tesseract.min.js', 'worker.min.js', simd ? 'core/tesseract-core-simd-lstm.wasm.js' : 'core/tesseract-core-lstm.wasm.js', 'lang/eng.traineddata.gz'].map((u) => t0 + u)
+      .concat(['./vendor/exceljs/exceljs.min.js', './templates/ripoti-wiki-kanda-2.xlsx']);
+    for (const u of urls) { const r = await fetch(u); if (!r.ok) return; await r.arrayBuffer(); }
+    localStorage.setItem('ndina.warm', '2');
   } catch { /* try again next visit */ }
 }
 
