@@ -1,6 +1,6 @@
 // Interface text. Swahili first, English second. Report wording for WhatsApp lives in core/format.js.
 const sw = {
-  totalToday: 'Jumla ya siku', xlTitle: 'Excel ya wiki', xlHint: 'Fomu ya Ripoti ya Wiki, Kanda Na. 02. Jina la afisa linarudiwa kwenye kila mstari. Mistari ya UNPAID haiingii isipokuwa uchague.',
+  totalToday: 'Jumla ya siku', xlTitle: 'Excel ya wiki', xlHint: 'Fomu ya Ripoti ya Wiki, Kanda Na. 02. Jina la afisa linarudiwa kwenye kila mstari. Mistari ya UNPAID inaingia (Excel haitofautishi paid na unpaid). Zima kitufe kuziondoa.',
   xlUnpaid: 'Jumuisha UNPAID', xlRows: 'Mistari {n}', xlMissing: 'Mistari {n} haina Mtaa au TIN. Jaza kwenye Hariri (hukumbukwa kwa jina la mfanyabiashara) au kwenye Excel.',
   xlShare: 'Tuma Excel', xlDownload: 'Pakua', xlBuilding: 'Inaandaa Excel…', xlSaved: 'Excel imeandaliwa: mistari {n}.', xlFail: 'Excel imeshindwa. Unganisha data mara moja kisha jaribu tena.',
   needNameXl: 'Weka jina lako kwanza (Zaidi).', mtaa: 'Mtaa',
@@ -75,7 +75,7 @@ const sw = {
 };
 
 const en = {
-  totalToday: 'Total for the day', xlTitle: 'Weekly Excel', xlHint: 'Weekly report form, Kanda No. 02. The officer name is repeated on every row. UNPAID lines are left out unless you choose them.',
+  totalToday: 'Total for the day', xlTitle: 'Weekly Excel', xlHint: 'Weekly report form, Kanda No. 02. The officer name is repeated on every row. UNPAID lines are included (the form does not separate paid and unpaid). Switch off to leave them out.',
   xlUnpaid: 'Include UNPAID', xlRows: '{n} rows', xlMissing: '{n} rows have no Mtaa or TIN. Fill them in Edit (remembered by trader name) or in Excel.',
   xlShare: 'Send Excel', xlDownload: 'Download', xlBuilding: 'Preparing Excel…', xlSaved: 'Excel ready: {n} rows.', xlFail: 'Excel failed. Connect to data once, then try again.',
   needNameXl: 'Set your name first (More).', mtaa: 'Street (Mtaa)',

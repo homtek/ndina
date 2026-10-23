@@ -9,7 +9,7 @@ const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const clone = (o) => JSON.parse(JSON.stringify(o || {}));
 
 // days: [{ date, entries }]  ->  one row per control number, day by day
-export function weeklyRows(days, { includeUnpaid = false } = {}) {
+export function weeklyRows(days, { includeUnpaid = true } = {}) {
   const rows = [];
   for (const { entries } of days) {
     for (const e of entries) {

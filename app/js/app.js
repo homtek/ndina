@@ -297,10 +297,10 @@ function viewWeek() {
     <p class="muted small">${t('pasteDailyHint')}</p>
     <textarea id="wkPaste" rows="6" placeholder="Tar ${isoToDmy(reportDate())}\n992041400527-80,000 BL PAID…">${esc(ui.wkPaste)}</textarea>
     <button class="btn primary" data-act="wkRead">${t('addDaily')}</button></details>`;
-  const xl = weeklyRows(w.inc.map((r) => ({ date: r.d, entries: r.used })), { includeUnpaid: !!S.weekly.unpaid });
+  const xl = weeklyRows(w.inc.map((r) => ({ date: r.d, entries: r.used })), { includeUnpaid: !S.weekly.excludeUnpaid });
   const noMeta = xl.filter((r) => !r.mtaa || !r.tin).length;
   h += `<section class="card"><h2>${t('xlTitle')}</h2><p class="muted small">${t('xlHint')}</p>
-    <div class="row"><button class="chip ${S.weekly.unpaid ? 'on' : ''}" data-act="xlUnpaid">${t('xlUnpaid')}</button><span class="muted small">${t('xlRows', { n: xl.length })}</span></div>
+    <div class="row"><button class="chip ${S.weekly.excludeUnpaid ? '' : 'on'}" data-act="xlUnpaid">${t('xlUnpaid')}</button><span class="muted small">${t('xlRows', { n: xl.length })}</span></div>
     ${xl.length && noMeta ? `<p class="note warnline">${t('xlMissing', { n: noMeta })}</p>` : ''}
     <div class="row" style="margin-top:12px"><button class="btn primary" data-act="xlShare" ${xl.length ? '' : 'disabled'}>${t('xlShare')}</button><button class="btn" data-act="xlDownload" ${xl.length ? '' : 'disabled'}>${t('xlDownload')}</button></div></section>`;
   if (w.text) h += `<details class="preview" ${ui.open.prev ? 'open' : ''}><summary data-act="toggle" data-k="prev">${t('seeMessage')}</summary><pre>${esc(w.text)}</pre></details>`;
@@ -314,7 +314,7 @@ async function makeExcel(share) {
   toast(t('xlBuilding'));
   try {
     const { blob, count } = await buildWeeklyXlsx({
-      officer: S.settings.name, includeUnpaid: !!S.weekly.unpaid,
+      officer: S.settings.name, includeUnpaid: !S.weekly.excludeUnpaid,
       days: w.inc.map((r) => ({ date: r.d, entries: r.used })),
       title: `Ripoti ya wiki ${isoToDmy(w.dates[0])} - ${isoToDmy(w.dates[6])}`,
     });
@@ -618,7 +618,7 @@ const actions = {
   wkMode: (el) => { S.weekly.mode = el.dataset.v; save(); },
   wkRead: () => { ui.wkPaste = $('#wkPaste').value; addDailyPasted(); },
   openDay: (el) => { const d = el.dataset.d; S.settings.dateOverride = d === todayIso() ? null : d; ui.tab = 'report'; ui.pool = 'used'; ui.fResult = null; save(); },
-  xlUnpaid: () => { S.weekly.unpaid = !S.weekly.unpaid; save(); },
+  xlUnpaid: () => { S.weekly.excludeUnpaid = !S.weekly.excludeUnpaid; save(); },
   xlShare: () => { makeExcel(true); return false; },
   xlDownload: () => { makeExcel(false); return false; },
   wkShare: () => { doShare(weekData().text); return false; },

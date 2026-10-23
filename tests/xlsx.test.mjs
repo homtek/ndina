@@ -11,10 +11,10 @@ const mk = (n, extra = {}) => Array.from({ length: n }, (_, i) => ({
   cn: String(992041400000 + i), amt: 100000 + i * 500, type: i % 5 === 0 ? 'SL' : 'BL', status: 'PAID', name: `MFANYABIASHARA ${i + 1}`, ...extra,
 }));
 
-test('unpaid lines are left out unless asked for', () => {
+test('unpaid lines are included by default and can be switched off', () => {
   const entries = [...mk(3), { cn: '992041400999', amt: 20000, type: 'SL', status: 'UNPAID', name: 'X' }];
-  assert.equal(weeklyRows([{ date: '2026-10-13', entries }]).length, 3);
-  assert.equal(weeklyRows([{ date: '2026-10-13', entries }], { includeUnpaid: true }).length, 4);
+  assert.equal(weeklyRows([{ date: '2026-10-13', entries }]).length, 4);
+  assert.equal(weeklyRows([{ date: '2026-10-13', entries }], { includeUnpaid: false }).length, 3);
 });
 
 test('fills the template: officer repeated, control number as text, formulas kept', { skip: !ExcelJS }, async () => {
