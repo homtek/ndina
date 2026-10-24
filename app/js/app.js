@@ -56,7 +56,11 @@ function session() {
 }
 
 // Older saved entries had no day: file them under their payment date.
-function migrate() { S.entries.forEach((e) => { if (!e.day) e.day = e.pay || reportDate(); }); }
+function migrate() {
+  S.entries.forEach((e) => { if (!e.day) e.day = e.pay || reportDate(); });
+  if (!S.weekly.keep) S.weekly.keep = {};
+  if (S.weekly.v !== 3) { S.weekly.skip = {}; S.weekly.v = 3; }   // the old Use/Skip buttons were easy to switch off by mistake
+}
 
 // ---------- OCR results -> entries ----------
 function ingest(res, name) {
@@ -263,34 +267,46 @@ function entryRow(e) {
 // ----- weekly -----
 function weekData() {
   const start = ui.weekStart || weekStart(reportDate());
-  const dates = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(start, i));
-  const rows = dates.map((d, i) => ({
+  const dates = [0, 1, 2, 3, 4].map((i) => addDays(start, i));          // Monday to Friday
+  const mk = (d, i) => ({
     d, i,
     used: sorted(S.entries.filter((e) => e.day === d && e.pool === 'used')),
     review: S.entries.filter((e) => e.day === d && e.pool === 'review').length,
-  }));
-  const inc = rows.filter((r) => r.used.length && !S.weekly.skip[r.d]);
+  });
+  const weekdays = dates.map(mk);
+  // Saturday / Sunday only show up if they hold data, and stay out until the person ticks them
+  const weekend = [5, 6].map((i) => ({ ...mk(addDays(start, i), i), weekend: true })).filter((r) => r.used.length);
+  const rows = [...weekdays, ...weekend];
+  const isOn = (r) => r.used.length > 0 && (r.weekend ? !!S.weekly.keep[r.d] : !S.weekly.skip[r.d]);
+  const inc = rows.filter(isOn);
   const all = inc.flatMap((r) => r.used);
   const text = inc.length ? weeklyReport({
-    name: S.settings.name, from: dates[0], to: dates[6], mode: S.weekly.mode,
-    days: inc.map((r) => ({ date: r.d, entries: r.used })), emptyDates: rows.filter((r) => !inc.includes(r)).map((r) => r.d),
+    name: S.settings.name, from: dates[0], to: dates[4], mode: S.weekly.mode,
+    days: inc.map((r) => ({ date: r.d, entries: r.used })), emptyDates: weekdays.filter((r) => !inc.includes(r)).map((r) => r.d),
   }) : '';
-  return { start, dates, rows, inc, all, text };
+  return { start, dates, rows, weekdays, inc, all, text, isOn };
 }
+
+const TICK = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
 function viewWeek() {
   const w = weekData();
   const short = (d) => isoToDmy(d).slice(0, 5);
+  const withData = w.rows.filter((r) => r.used.length);
+  const reason = w.inc.length ? '' : (withData.length ? t('xlPick') : t('xlNoData'));
   let h = `<div class="weeknav"><button class="iconbtn" data-act="wkPrev" aria-label="${t('prevWeek')}">‹</button>
-    <button class="weeklabel" data-act="wkThis">${short(w.dates[0])} – ${isoToDmy(w.dates[6])}</button>
+    <button class="weeklabel" data-act="wkThis">${short(w.dates[0])} – ${isoToDmy(w.dates[4])}</button>
     <button class="iconbtn" data-act="wkNext" aria-label="${t('nextWeek')}">›</button></div>`;
-  h += sumBlock(sumOf(w.all), sumOf(w.all, 'BL'), sumOf(w.all, 'SL'), w.all.length, '', t('totalWeek'));
-  h += `<section class="card"><h2>${t('daysTitle')}</h2><ul class="days">${w.rows.map((r) => {
-    const has = r.used.length > 0, on = has && !S.weekly.skip[r.d];
-    return `<li class="day ${r.d === reportDate() ? 'today' : ''}"><div class="dayinfo"><b>${t('day' + r.i)}</b> <span class="muted">${short(r.d)}</span>
-      <small class="${has ? '' : 'faint'}">${has ? `${t('cn', { n: r.used.length })} · ${fmtNum(sumOf(r.used))}` : t('noData')}${r.review ? ` · <b class="warnline">${t('toCheck', { n: r.review })}</b>` : ''}</small></div>
-      <div class="row">${has ? `<button class="chip ${on ? 'on' : ''}" data-act="wkToggle" data-d="${r.d}">${on ? t('useDay') : t('skipDay')}</button>` : ''}
-      <button class="btn sm" data-act="openDay" data-d="${r.d}">${has ? t('edit') : t('addDay')}</button></div></li>`;
+  h += sumBlock(sumOf(w.all), sumOf(w.all, 'BL'), sumOf(w.all, 'SL'), w.all.length, reason ? `<p class="note warnline">${reason}</p>` : '', t('totalWeek'));
+  const allOn = w.weekdays.filter((r) => r.used.length).every((r) => w.isOn(r));
+  h += `<section class="card"><div class="row between"><h2 style="margin:0">${t('daysTitle')}</h2>${withData.length ? `<button class="link" data-act="wkAll">${allOn ? t('wkNone') : t('wkAll')}</button>` : ''}</div>
+    <ul class="days">${w.rows.map((r) => {
+    const has = r.used.length > 0, on = w.isOn(r);
+    return `<li class="day ${r.d === reportDate() ? 'today' : ''}">
+      ${has ? `<button class="check ${on ? 'on' : ''}" role="checkbox" aria-checked="${on}" aria-label="${t('day' + r.i)}" data-act="wkToggle" data-d="${r.d}" ${r.weekend ? 'data-w="1"' : ''}><span>${on ? TICK : ''}</span></button>` : '<span class="check-gap"></span>'}
+      <div class="dayinfo"><b>${t('day' + r.i)}</b> <span class="muted">${short(r.d)}</span>
+      <small class="${has ? '' : 'faint'}">${has ? `${t('cn', { n: r.used.length })} · ${fmtNum(sumOf(r.used))}${r.weekend && !on ? ` · ${t('weekendOff')}` : ''}` : t('noData')}${r.review ? ` · <b class="warnline">${t('toCheck', { n: r.review })}</b>` : ''}</small></div>
+      <button class="btn sm" data-act="openDay" data-d="${r.d}">${has ? t('edit') : t('addDay')}</button></li>`;
   }).join('')}</ul></section>`;
   h += `<div><span class="lbl">${t('weekFormat')}</span>${seg('wkMode', S.weekly.mode, [['sum', t('modeSum')], ['full', t('modeFull')]])}</div>`;
   h += `<details class="card" ${ui.open.wk ? 'open' : ''}><summary data-act="toggle" data-k="wk">${t('pasteDaily')}</summary>
@@ -301,6 +317,7 @@ function viewWeek() {
   const noMeta = xl.filter((r) => !r.mtaa || !r.tin).length;
   h += `<section class="card"><h2>${t('xlTitle')}</h2><p class="muted small">${t('xlHint')}</p>
     <div class="row"><button class="chip ${S.weekly.excludeUnpaid ? '' : 'on'}" data-act="xlUnpaid">${t('xlUnpaid')}</button><span class="muted small">${t('xlRows', { n: xl.length })}</span></div>
+    ${reason ? `<p class="note warnline">${reason}</p>` : ''}
     ${xl.length && noMeta ? `<p class="note warnline">${t('xlMissing', { n: noMeta })}</p>` : ''}
     <div class="row" style="margin-top:12px"><button class="btn primary" data-act="xlShare" ${xl.length ? '' : 'disabled'}>${t('xlShare')}</button><button class="btn" data-act="xlDownload" ${xl.length ? '' : 'disabled'}>${t('xlDownload')}</button></div></section>`;
   if (w.text) h += `<details class="preview" ${ui.open.prev ? 'open' : ''}><summary data-act="toggle" data-k="prev">${t('seeMessage')}</summary><pre>${esc(w.text)}</pre></details>`;
@@ -316,9 +333,9 @@ async function makeExcel(share) {
     const { blob, count } = await buildWeeklyXlsx({
       officer: S.settings.name, includeUnpaid: !S.weekly.excludeUnpaid,
       days: w.inc.map((r) => ({ date: r.d, entries: r.used })),
-      title: `Ripoti ya wiki ${isoToDmy(w.dates[0])} - ${isoToDmy(w.dates[6])}`,
+      title: `Ripoti ya wiki ${isoToDmy(w.dates[0])} - ${isoToDmy(w.dates[4])}`,
     });
-    const name = `RIPOTI_YA_WIKI_KANDA_02_${S.settings.name.replace(/[^A-Za-z0-9]+/g, '_')}_${isoToDmy(w.dates[0]).slice(0, 5)}-${isoToDmy(w.dates[6])}.xlsx`;
+    const name = `RIPOTI_YA_WIKI_KANDA_02_${S.settings.name.replace(/[^A-Za-z0-9]+/g, '_')}_${isoToDmy(w.dates[0]).slice(0, 5)}-${isoToDmy(w.dates[4])}.xlsx`;
     if (share) { const r = await shareFile(blob, name, name); if (r === 'downloaded') toast(t('xlSaved', { n: count })); }
     else { downloadBlob(name, blob); toast(t('xlSaved', { n: count })); }
   } catch { toast(t('xlFail')); }
@@ -614,7 +631,18 @@ const actions = {
   wkPrev: () => { ui.weekStart = addDays(weekData().start, -7); },
   wkNext: () => { ui.weekStart = addDays(weekData().start, 7); },
   wkThis: () => { ui.weekStart = null; },
-  wkToggle: (el) => { const k = el.dataset.d; if (S.weekly.skip[k]) delete S.weekly.skip[k]; else S.weekly.skip[k] = true; save(); },
+  wkToggle: (el) => {
+    const k = el.dataset.d;
+    const map = el.dataset.w ? S.weekly.keep : S.weekly.skip;   // weekends are opt-in, weekdays are opt-out
+    if (map[k]) delete map[k]; else map[k] = true;
+    save();
+  },
+  wkAll: () => {
+    const w = weekData();
+    const allOn = w.weekdays.filter((r) => r.used.length).every((r) => w.isOn(r));
+    w.weekdays.forEach((r) => { if (!r.used.length) return; if (allOn) S.weekly.skip[r.d] = true; else delete S.weekly.skip[r.d]; });
+    save();
+  },
   wkMode: (el) => { S.weekly.mode = el.dataset.v; save(); },
   wkRead: () => { ui.wkPaste = $('#wkPaste').value; addDailyPasted(); },
   openDay: (el) => { const d = el.dataset.d; S.settings.dateOverride = d === todayIso() ? null : d; ui.tab = 'report'; ui.pool = 'used'; ui.fResult = null; save(); },

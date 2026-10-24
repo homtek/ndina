@@ -167,3 +167,10 @@ pre { white-space: pre-wrap; word-break: break-word; font: 13.5px/1.55 ui-monosp
 .day .chip { min-height: 36px; padding: 0 12px; font-size: 13.5px; }
 details.card textarea { margin-top: 4px; }
 .nav button { font-size: 11px; }
+
+/* tick boxes for the weekly days */
+.check { width: 44px; height: 44px; margin: -8px 0 -8px -10px; border: 0; background: none; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
+.check span { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--faint); display: flex; align-items: center; justify-content: center; color: var(--accent-ink); }
+.check.on span { background: var(--accent); border-color: var(--accent); }
+.check-gap { width: 34px; flex: none; }
+.day .dayinfo { flex: 1; min-width: 0; }

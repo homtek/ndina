@@ -34,6 +34,8 @@ test('fills the template: officer repeated, control number as text, formulas kep
   assert.equal(ws.getCell('D5').value, 'MCHIKICHINI'); assert.equal(ws.getCell('E5').value, '123-456-789');
   assert.equal(ws.getCell('M5').value.formula, 'SUM(G5:L5)');
   assert.equal(ws.getCell('A34').value, 'JUMLA'); assert.equal(ws.getCell('G34').value.formula, 'SUM(G4:G33)');
+  assert.match(ws.getCell('G5').numFmt, /#,##0\.00/);   // the new template separates thousands
+  assert.match(ws.getCell('M5').numFmt, /#,##0\.00/);
 });
 
 test('more than 30 lines: rows are added and the total moves down', { skip: !ExcelJS }, async () => {

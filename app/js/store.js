@@ -9,7 +9,7 @@ const defaults = () => ({
   settings: { name: '', lang: 'sw', prefix: CONFIG.controlPrefix, dateOverride: null },
   entries: [],
   filters: {}, // per day
-  weekly: { skip: {}, mode: 'sum' },
+  weekly: { skip: {}, keep: {}, mode: 'sum' },
   license: null, // { code }
   leader: { roster: [], sessions: {} },
 });

@@ -23,8 +23,6 @@ export function weeklyRows(days, { includeUnpaid = true } = {}) {
   return rows;
 }
 
-const fmtFor = (v) => (Number.isInteger(v) ? '#,##0' : '#,##0.00');
-
 export async function fillTemplate(ExcelJS, templateBytes, { officer, rows, title }) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(templateBytes);
@@ -57,13 +55,12 @@ export async function fillTemplate(ExcelJS, templateBytes, { officer, rows, titl
       row.getCell(4).value = d.mtaa || null;
       row.getCell(5).value = d.tin ? String(d.tin) : null;
       const cn = row.getCell(6); cn.value = String(d.cn); cn.numFmt = '@';       // keep 12 digits, never 9.92E+11
-      if (d.bl != null) { const g = row.getCell(7); g.value = d.bl; g.numFmt = fmtFor(d.bl); }
-      if (d.sl != null) { const h = row.getCell(8); h.value = d.sl; h.numFmt = fmtFor(d.sl); }
+      if (d.bl != null) row.getCell(7).value = d.bl;
+      if (d.sl != null) row.getCell(8).value = d.sl;
     }
     const sum = (d?.bl || 0) + (d?.sl || 0);
     const m = row.getCell(13);
     m.value = { formula: `SUM(G${r}:L${r})`, result: round2(sum) };
-    m.numFmt = fmtFor(round2(sum));
     row.commit?.();
   }
 
@@ -78,12 +75,10 @@ export async function fillTemplate(ExcelJS, templateBytes, { officer, rows, titl
   AMOUNT_COLS.forEach((L) => {
     const cell = ws.getCell(`${L}${totalRow}`);
     cell.value = { formula: `SUM(${L}${FIRST}:${L}${totalRow - 1})`, result: round2(colSum[L]) };
-    cell.numFmt = fmtFor(round2(colSum[L]));
   });
   const grand = round2(Object.values(colSum).reduce((a, b) => a + b, 0));
   const mt = ws.getCell(`M${totalRow}`);
   mt.value = { formula: `SUM(G${totalRow}:L${totalRow})`, result: grand };
-  mt.numFmt = fmtFor(grand);
 
   // tidy: open at the top, print landscape on one page width
   ws.views = [{ state: 'normal', activeCell: 'A1', showGridLines: true }];
