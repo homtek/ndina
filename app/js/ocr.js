@@ -43,8 +43,8 @@ async function toCanvas(blob, maxW = 800) {
   return c;
 }
 
-export async function enqueue(files) {
-  for (const f of files) await qPut({ id: uid(), name: f.name || 'image', blob: f });
+export async function enqueue(files, mode = 'add') {
+  for (const f of files) await qPut({ id: uid(), name: f.name || 'image', blob: f, mode });
 }
 export const pendingCount = async () => (await qKeys()).length;
 
@@ -76,7 +76,7 @@ export async function run({ prefix, onItem, onProgress }) {
           const { data } = await w.recognize(canvas);
           res = parseGepgText(data.text, { prefix });
         } catch { res = { ok: false, reason: 'ocr-error' }; }
-        onItem(res, item.name);
+        onItem(res, item.name, item.mode || 'add');
         await qDel(id);
         progress.done++;
         onProgress();

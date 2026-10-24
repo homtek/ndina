@@ -174,3 +174,5 @@ details.card textarea { margin-top: 4px; }
 .check.on span { background: var(--accent); border-color: var(--accent); }
 .check-gap { width: 34px; flex: none; }
 .day .dayinfo { flex: 1; min-width: 0; }
+
+.seg button { white-space: nowrap; padding: 0 6px; }

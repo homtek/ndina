@@ -1,5 +1,5 @@
 // Offline support. Bump VERSION when you change any file so phones pick up the update.
-const VERSION = 'ndina-1.3.0';
+const VERSION = 'ndina-1.3.1';
 const SHELL = ['./', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'js/app.js', 'js/xlsx.js', 'js/core/weeklyxlsx.js', 'templates/ripoti-wiki-kanda-2.xlsx', 'js/config.js', 'js/i18n.js', 'js/store.js', 'js/ocr.js', 'js/share.js',
   'js/core/util.js', 'js/core/gepg.js', 'js/core/reportparse.js', 'js/core/pools.js', 'js/core/compile.js', 'js/core/format.js', 'js/core/license.js'];

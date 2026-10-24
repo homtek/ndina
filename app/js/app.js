@@ -15,7 +15,7 @@ import { weeklyRows } from './core/weeklyxlsx.js';
 // ---------- UI state (not saved) ----------
 const ui = {
   tab: 'report', pool: 'used', openId: null, adding: false, filterOpen: false,
-  failed: [], dupCount: 0, pending: 0,
+  failed: [], dupCount: 0, repaired: 0, pending: 0, repairScope: 'day', repairFrom: 'report', copied: {}, repairLog: [], repairStats: { filled: 0, had: 0 },
   fType: 'ALL', fAmounts: '', fTarget: '', fResult: null,
   lTab: 'receive', paste: '', rosterPaste: '', code: '', codeErr: '', unlockedUntil: null,
   preview: false, showHelp: false, open: {}, weekStart: null, wkPaste: '', toastMsg: '', license: null, rosterImport: null, newName: '',
@@ -63,11 +63,32 @@ function migrate() {
 }
 
 // ---------- OCR results -> entries ----------
+function fillName(e, name) {
+  e.name = name;
+  const kt = knownTrader(name);
+  if (kt && !e.mtaa && !e.tin) { e.mtaa = kt.mtaa || null; e.tin = kt.tin || null; }
+  propagate(e);
+}
+
+// Repair mode: a screenshot finds its entry by control number, whatever day that entry is on.
+function repairIngest(res, name) {
+  if (!res.ok) { ui.failed.push({ name, reason: res.reason }); return; }
+  const e = S.entries.find((x) => x.cn === res.cn && x.pool !== 'trash');
+  if (!e) { ui.repairLog.push({ id: uid(), kind: 'unknown', cn: res.cn, res }); return; }
+  if (!e.name && res.name) { fillName(e, res.name); ui.repairStats.filled++; } else ui.repairStats.had++;
+  // never change money silently: list differences for the person to decide
+  if (res.amount !== e.amt) ui.repairLog.push({ id: uid(), kind: 'amount', cn: e.cn, entry: e.id, from: e.amt, to: res.amount, apply: { amt: res.amount } });
+  if (res.type && res.type !== e.type) ui.repairLog.push({ id: uid(), kind: 'type', cn: e.cn, entry: e.id, from: e.type, to: res.type, apply: { type: res.type } });
+  if (e.status === 'UNPAID') ui.repairLog.push({ id: uid(), kind: 'status', cn: e.cn, entry: e.id, from: 'UNPAID', to: 'PAID', apply: { status: 'PAID', pay: res.pay || e.day } });
+}
 function ingest(res, name) {
   if (!res.ok) { ui.failed.push({ name, reason: res.reason }); return; }
   const date = reportDate();
   const existing = S.entries.find((e) => e.cn === res.cn);
-  if (existing && existing.amt === res.amount) { ui.dupCount++; return; }
+  if (existing && existing.amt === res.amount) {
+    if (!existing.name && res.name) { fillName(existing, res.name); ui.repaired++; } else ui.dupCount++;
+    return;
+  }
   const flags = res.flags.filter((f) => f !== 'no-words');
   if (existing) flags.push('exists');
   const e = {
@@ -102,7 +123,7 @@ async function startOcr() {
   if (!ui.pending) return render();
   await OCR.run({
     prefix: prefix(),
-    onItem: (res, name) => { ingest(res, name); save(); },
+    onItem: (res, name, mode) => { if (mode === 'repair') repairIngest(res, name); else ingest(res, name); save(); },
     onProgress: () => { renderSoon(); },
   });
   ui.pending = await OCR.pendingCount();
@@ -128,7 +149,7 @@ const ICON = {
 };
 function nav() {
   const items = [['report', t('navReport')], ['week', t('navWeek')], ['leader', t('navLeader')], ['more', t('navMore')]];
-  return items.map(([k, label]) => `<button data-act="tab" data-v="${k}" class="${ui.tab === k ? 'on' : ''}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg><span>${label}</span></button>`).join('');
+  return items.map(([k, label]) => `<button data-act="tab" data-v="${k}" class="${(ui.tab === 'repair' ? ui.repairFrom : ui.tab) === k ? 'on' : ''}"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg><span>${label}</span></button>`).join('');
 }
 
 function sumBlock(total, bl, sl, count, extra = '', label = t('totalToday')) {
@@ -162,19 +183,7 @@ function viewReport() {
     <button class="link" data-act="manual">${t('typeManually')}</button>
   </section>`;
 
-  if (running || pending) {
-    h += `<section class="card queue">
-      <div class="row between"><b id="qtext">${running ? t('reading', { done: OCR.progress.done, total: OCR.progress.total }) : t('waiting', { n: pending })}</b>
-      ${running ? `<button class="link" data-act="pause">${t('pause')}</button>` : `<button class="btn" data-act="resume">${t('resume')}</button>`}</div>
-      ${running ? `<progress id="qbar" max="1" value="${OCR.progress.total ? OCR.progress.done / OCR.progress.total : 0}"></progress><p class="muted small">${t('keepOpen')}</p>` : ''}
-    </section>`;
-  }
-  if (ui.dupCount) h += `<p class="note">${t('dupSkipped', { n: ui.dupCount })} <button class="link" data-act="clearDup">${t('close')}</button></p>`;
-  if (ui.failed.length) {
-    h += `<section class="card warn"><div class="row between"><b>${t('failedTitle', { n: ui.failed.length })}</b><button class="link" data-act="clearFailed">${t('close')}</button></div>
-      <ul class="plain">${ui.failed.slice(0, 8).map((f) => `<li>${esc(f.name)} <span class="muted">${t('fail.' + f.reason)}</span></li>`).join('')}</ul>
-      ${ui.failed.length > 8 ? `<p class="muted small">+${ui.failed.length - 8}</p>` : ''}<p class="muted small">${t('failedHint')}</p></section>`;
-  }
+  h += queueBlock();
   if (ui.adding) h += manualForm();
 
   if (review.length) {
@@ -182,7 +191,8 @@ function viewReport() {
       ${review.map((e) => reviewCard(e)).join('')}</section>`;
   }
 
-  h += sumBlock(total, bl, sl, used.length, `${mism ? `<p class="note warnline">${t('dateMismatchNote', { n: mism })}</p>` : ''}
+  const nameless = used.filter((e) => !e.name).length;
+  h += sumBlock(total, bl, sl, used.length, `${nameless ? `<p class="note warnline">${t('namesMissing', { n: nameless })} <button class="link" data-act="repairOpen" data-s="day">${t('repairBtn')}</button></p>` : ''}${mism ? `<p class="note warnline">${t('dateMismatchNote', { n: mism })}</p>` : ''}
     ${storageError ? `<p class="note warnline">${t('storageFull')}</p>` : ''}`);
 
   h += `<details class="card filter" ${ui.open.filter ? 'open' : ''}><summary data-act="toggle" data-k="filter">${t('filterTitle')}${curFilter() ? ` <span class="tag on">${t('active')}</span>` : ''}</summary>
@@ -205,6 +215,25 @@ function viewReport() {
     h += `<details class="preview" ${ui.open.prev ? 'open' : ''}><summary data-act="toggle" data-k="prev">${t('seeMessage')}</summary><pre>${esc(text)}</pre></details>`;
   }
   h += `<div class="actionbar"><button class="btn primary" data-act="shareMine" ${used.length ? '' : 'disabled'}>${t('sendWa')}</button><button class="btn" data-act="copyMine" ${used.length ? '' : 'disabled'}>${t('copy')}</button></div>`;
+  return h;
+}
+
+function queueBlock() {
+  const running = OCR.progress.running, pending = ui.pending;
+  let h = '';
+  if (running || pending) {
+    h += `<section class="card queue">
+      <div class="row between"><b id="qtext">${running ? t('reading', { done: OCR.progress.done, total: OCR.progress.total }) : t('waiting', { n: pending })}</b>
+      ${running ? `<button class="link" data-act="pause">${t('pause')}</button>` : `<button class="btn" data-act="resume">${t('resume')}</button>`}</div>
+      ${running ? `<progress id="qbar" max="1" value="${OCR.progress.total ? OCR.progress.done / OCR.progress.total : 0}"></progress><p class="muted small">${t('keepOpen')}</p>` : ''}
+    </section>`;
+  }
+  if (ui.dupCount || ui.repaired) h += `<p class="note">${ui.repaired ? t('autoFilled', { n: ui.repaired }) + ' ' : ''}${ui.dupCount ? t('dupSkipped', { n: ui.dupCount }) : ''} <button class="link" data-act="clearDup">${t('close')}</button></p>`;
+  if (ui.failed.length) {
+    h += `<section class="card warn"><div class="row between"><b>${t('failedTitle', { n: ui.failed.length })}</b><button class="link" data-act="clearFailed">${t('close')}</button></div>
+      <ul class="plain">${ui.failed.slice(0, 8).map((f) => `<li>${esc(f.name)} <span class="muted">${t('fail.' + f.reason)}</span></li>`).join('')}</ul>
+      ${ui.failed.length > 8 ? `<p class="muted small">+${ui.failed.length - 8}</p>` : ''}<p class="muted small">${t('failedHint')}</p></section>`;
+  }
   return h;
 }
 
@@ -264,6 +293,51 @@ function entryRow(e) {
     <span class="amt">${fmtNum(e.amt)}<small class="tag ${e.type}">${e.type}</small></span></button>${acts}</li>`;
 }
 
+// ----- repair names -----
+function namelessList() {
+  const day = reportDate();
+  const start = ui.weekStart || weekStart(day);
+  const inScope = (e) => ui.repairScope === 'all' || (ui.repairScope === 'week' ? e.day >= start && e.day <= addDays(start, 6) : e.day === day);
+  return S.entries.filter((e) => e.pool !== 'trash' && !e.name && inScope(e)).sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.added - b.added));
+}
+
+function viewRepair() {
+  const list = namelessList();
+  const done = list.filter((e) => ui.copied[e.id]).length;
+  const logs = ui.repairLog;
+  let h = `<div><button class="link" data-act="repairBack">‹ ${t('back')}</button></div>
+    <section class="card"><h2>${t('repairTitle')}</h2>
+      <ol class="steps small"><li>${t('repairS1')}</li><li>${t('repairS2')}</li><li>${t('repairS3')}</li></ol>
+      <div class="stack" style="margin-top:14px">
+        ${seg('rScope', ui.repairScope, [['day', t('scopeDay')], ['week', t('scopeWeek')], ['all', t('scopeAll')]])}
+        <button class="btn primary big" data-act="repairNext" ${list.length ? '' : 'disabled'}>${t('copyNext', { a: Math.min(done + 1, list.length), b: list.length })}</button>
+        <label class="btn big" for="repairFiles">${t('pickRepair')}</label><input id="repairFiles" type="file" accept="image/*" multiple hidden>
+      </div></section>`;
+  h += queueBlock();
+  if (ui.repairStats.filled || ui.repairStats.had) h += `<p class="note">${t('filledNames', { n: ui.repairStats.filled })}${ui.repairStats.had ? ' ' + t('alreadyNamed', { n: ui.repairStats.had }) : ''} <button class="link" data-act="repairClearStats">${t('close')}</button></p>`;
+  if (logs.length) {
+    h += `<section class="card warn"><h2>${t('repairCheck', { n: logs.length })}</h2>${logs.map((l) => {
+      if (l.kind === 'unknown') return `<div class="conf"><div class="small mono"><b>${l.cn}</b> ${l.res.name ? '· ' + esc(l.res.name) : ''}</div><div class="small muted">${t('notInApp')} · ${fmtNum(l.res.amount)} ${l.res.type || '?'}${l.res.pay ? ' · ' + isoToDmy(l.res.pay) : ''}</div>
+        <div class="chips"><button class="chip on" data-act="repairAdd" data-i="${l.id}">${t('addToDay', { d: isoToDmy(l.res.pay || reportDate()) })}</button><button class="chip" data-act="repairDrop" data-i="${l.id}">${t('ignore')}</button></div></div>`;
+      const what = l.kind === 'amount' ? `${fmtNum(l.from)} → ${fmtNum(l.to)}` : `${l.from} → ${l.to}`;
+      return `<div class="conf"><div class="small mono"><b>${l.cn}</b></div><div class="small muted">${t('diff.' + l.kind)}: ${what}</div>
+        <div class="chips"><button class="chip on" data-act="repairApply" data-i="${l.id}">${t('useShot')}</button><button class="chip" data-act="repairDrop" data-i="${l.id}">${t('keepMine')}</button></div></div>`;
+    }).join('')}</section>`;
+  }
+  if (!list.length) h += `<p class="empty">${t('repairNone')}</p>`;
+  else {
+    let cur = '';
+    h += `<section class="card"><h2>${t('repairList', { n: list.length })}</h2><ul class="entries">`;
+    list.forEach((e) => {
+      if (e.day !== cur) { cur = e.day; h += `</ul><div class="grp"><b>${t('day' + dowIndex(e.day))}</b> <span class="muted">${isoToDmy(e.day)}</span></div><ul class="entries">`; }
+      h += `<li class="entry"><div class="entryhead" style="cursor:default"><span class="cn">${esc(e.cn)}<small>${fmtNum(e.amt)} ${e.type}${e.status === 'UNPAID' ? ' · UNPAID' : ''}</small></span>
+        <button class="btn sm ${ui.copied[e.id] ? '' : 'primary'}" data-act="repairCopy" data-id="${e.id}">${ui.copied[e.id] ? t('copiedShort') : t('copy')}</button></div></li>`;
+    });
+    h += '</ul></section>';
+  }
+  return h;
+}
+
 // ----- weekly -----
 function weekData() {
   const start = ui.weekStart || weekStart(reportDate());
@@ -318,6 +392,7 @@ function viewWeek() {
   h += `<section class="card"><h2>${t('xlTitle')}</h2><p class="muted small">${t('xlHint')}</p>
     <div class="row"><button class="chip ${S.weekly.excludeUnpaid ? '' : 'on'}" data-act="xlUnpaid">${t('xlUnpaid')}</button><span class="muted small">${t('xlRows', { n: xl.length })}</span></div>
     ${reason ? `<p class="note warnline">${reason}</p>` : ''}
+    ${xl.some((r) => !r.trader) ? `<p class="note warnline">${t('xlNoNames', { n: xl.filter((r) => !r.trader).length })} <button class="link" data-act="repairOpen" data-s="week">${t('repairBtn')}</button></p>` : ''}
     ${xl.length && noMeta ? `<p class="note warnline">${t('xlMissing', { n: noMeta })}</p>` : ''}
     <div class="row" style="margin-top:12px"><button class="btn primary" data-act="xlShare" ${xl.length ? '' : 'disabled'}>${t('xlShare')}</button><button class="btn" data-act="xlDownload" ${xl.length ? '' : 'disabled'}>${t('xlDownload')}</button></div></section>`;
   if (w.text) h += `<details class="preview" ${ui.open.prev ? 'open' : ''}><summary data-act="toggle" data-k="prev">${t('seeMessage')}</summary><pre>${esc(w.text)}</pre></details>`;
@@ -512,7 +587,7 @@ function render() {
   document.documentElement.lang = lang();
   $('#top').innerHTML = header();
   $('#nav').innerHTML = nav();
-  main().innerHTML = ui.tab === 'report' ? viewReport() : ui.tab === 'week' ? viewWeek() : ui.tab === 'leader' ? viewLeader() : viewMore();
+  main().innerHTML = ui.tab === 'repair' ? viewRepair() : ui.tab === 'report' ? viewReport() : ui.tab === 'week' ? viewWeek() : ui.tab === 'leader' ? viewLeader() : viewMore();
 }
 
 // ---------- actions ----------
@@ -622,10 +697,38 @@ const actions = {
   },
   pause: () => { OCR.progress.stop = true; },
   resume: () => { startOcr(); return false; },
-  clearDup: () => { ui.dupCount = 0; },
+  clearDup: () => { ui.dupCount = 0; ui.repaired = 0; },
   clearFailed: () => { ui.failed = []; },
   shareMine: () => { doShare(mineText()); return false; },
   copyMine: () => { doCopy(mineText()); return false; },
+
+  // repair names
+  repairOpen: (el) => { ui.repairFrom = ui.tab; ui.repairScope = el.dataset.s || 'day'; ui.tab = 'repair'; ui.copied = {}; },
+  repairBack: () => { ui.tab = ui.repairFrom || 'report'; },
+  rScope: (el) => { ui.repairScope = el.dataset.v; ui.copied = {}; },
+  repairCopy: async (el) => { const e = byId(el.dataset.id); if (await copyText(e.cn)) { ui.copied[e.id] = true; toast(t('copiedCn', { cn: e.cn })); } else toast(t('copyFail')); },
+  repairNext: async () => {
+    const list = namelessList();
+    let e = list.find((x) => !ui.copied[x.id]);
+    if (!e) { ui.copied = {}; e = list[0]; }
+    if (!e) return false;
+    if (await copyText(e.cn)) { ui.copied[e.id] = true; toast(t('copiedCn', { cn: e.cn })); } else toast(t('copyFail'));
+  },
+  repairApply: (el) => {
+    const l = ui.repairLog.find((x) => x.id === el.dataset.i); const e = l && byId(l.entry); if (!e) return;
+    Object.assign(e, l.apply); if (l.apply.status === 'PAID' && !e.pay) e.pay = l.apply.pay;
+    ui.repairLog = ui.repairLog.filter((x) => x.id !== l.id); save();
+  },
+  repairDrop: (el) => { ui.repairLog = ui.repairLog.filter((x) => x.id !== el.dataset.i); },
+  repairAdd: (el) => {
+    const l = ui.repairLog.find((x) => x.id === el.dataset.i); if (!l) return;
+    const r = l.res; const day = r.pay || reportDate();
+    const e = { id: uid(), cn: r.cn, amt: r.amount, type: r.type || '?', status: 'PAID', pay: r.pay, recv: r.recv, day, name: r.name || null, words: r.words ?? null,
+      pool: r.type ? 'used' : 'review', flags: r.type ? [] : ['type'], auto: null, manual: true, src: 'ocr', added: Date.now() + S.entries.length };
+    S.entries.push(e); if (e.name) fillName(e, e.name);
+    ui.repairLog = ui.repairLog.filter((x) => x.id !== l.id); save(); toast(t('movedTo', { d: isoToDmy(day) }));
+  },
+  repairClearStats: () => { ui.repairStats = { filled: 0, had: 0 }; },
 
   // weekly
   wkPrev: () => { ui.weekStart = addDays(weekData().start, -7); },
@@ -740,6 +843,9 @@ document.addEventListener('change', async (ev) => {
   if (el.id === 'dateInput') {
     S.settings.dateOverride = el.value && el.value !== todayIso() ? el.value : null;
     ui.fType = 'ALL'; ui.fAmounts = ''; ui.fTarget = ''; ui.fResult = null; ui.pool = 'used'; ui.openId = null; save(); render();
+  } else if (el.id === 'repairFiles') {
+    const files = [...el.files]; if (!files.length) return;
+    await OCR.enqueue(files, 'repair'); ui.pending = await OCR.pendingCount(); el.value = ''; render(); startOcr();
   } else if (el.id === 'files') {
     const files = [...el.files]; if (!files.length) return;
     await OCR.enqueue(files); ui.pending = await OCR.pendingCount(); el.value = ''; render(); startOcr();
